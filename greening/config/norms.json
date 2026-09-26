@@ -1,0 +1,50 @@
+{
+  "_comment": [
+    "Нормативные расстояния от объектов до посадок. distance_rules перенесены из vlad/config/zoning_rules.json",
+    "ветки artem (исходно — buffers_gis.json). Если для пары (объект, тип посадки) правила нет, посадка не ограничена:",
+    "в таблице 3.6.1 743-ПП у водопровода, газопровода и канализации для кустарников стоит прочерк.",
+    "source — откуда берётся геометрия объекта: layer — линии/точки слоёв этого класса,",
+    "surface — края полигонов поверхности, structure — контуры найденных структур."
+  ],
+  "distance_rules": [
+    {"object": "building_school_kindergarten", "source": "layer", "tree": 10.0, "shrub": 1.5, "rule": "PP743-T3.6.1-SCHOOL", "doc": "743-ПП, табл. 3.6.1", "title": "Стена школы или детского сада"},
+    {"object": "building_wall", "source": "layer", "tree": 5.0, "shrub": 1.5, "rule": "PP743-T3.6.1-WALL", "doc": "743-ПП, табл. 3.6.1", "title": "Наружная стена здания и сооружения"},
+    {"object": "roadway", "source": "surface", "tree": 2.0, "shrub": 1.0, "rule": "PP743-T3.6.1-ROAD", "doc": "743-ПП, табл. 3.6.1", "title": "Край проезжей части"},
+    {"object": "carriageway_edge", "source": "layer", "tree": 2.0, "shrub": 1.0, "rule": "PP743-T3.6.1-ROAD", "doc": "743-ПП, табл. 3.6.1", "title": "Край проезжей части (линия)"},
+    {"object": "sidewalk_path", "source": "layer", "tree": 0.7, "shrub": 0.5, "rule": "PP743-T3.6.1-WALK", "doc": "743-ПП, табл. 3.6.1", "title": "Край тротуара (линия)"},
+    {"object": "sidewalk", "source": "surface", "tree": 0.7, "shrub": 0.5, "rule": "PP743-T3.6.1-WALK", "doc": "743-ПП, табл. 3.6.1", "title": "Край тротуара и садовой дорожки"},
+    {"object": "paving", "source": "surface", "tree": 0.7, "shrub": 0.5, "rule": "PP743-T3.6.1-WALK", "doc": "743-ПП, табл. 3.6.1", "title": "Край мощения и садовой дорожки"},
+    {"object": "comm_cable", "source": "layer", "tree": 2.0, "shrub": 0.7, "rule": "PP743-T3.6.1-CABLE", "doc": "743-ПП, табл. 3.6.1", "title": "Кабель связи"},
+    {"object": "power_comm_cable", "source": "layer", "tree": 2.0, "shrub": 0.7, "rule": "PP743-T3.6.1-CABLE", "doc": "743-ПП, табл. 3.6.1", "title": "Силовой кабель"},
+    {"object": "water_supply", "source": "layer", "tree": 2.0, "rule": "PP743-T3.6.1-WATER", "doc": "743-ПП, табл. 3.6.1", "title": "Водопровод"},
+    {"object": "drainage", "source": "layer", "tree": 2.0, "rule": "PP743-T3.6.1-WATER", "doc": "743-ПП, табл. 3.6.1", "title": "Водосток, дренаж"},
+    {"object": "gas_pipeline", "source": "layer", "tree": 1.5, "rule": "PP743-T3.6.1-GAS", "doc": "743-ПП, табл. 3.6.1", "title": "Газопровод"},
+    {"object": "sewer", "source": "layer", "tree": 1.5, "rule": "PP743-T3.6.1-GAS", "doc": "743-ПП, табл. 3.6.1", "title": "Канализация"},
+    {"object": "heating_network", "source": "layer", "tree": 2.0, "shrub": 1.0, "rule": "PP743-T3.6.1-HEAT", "doc": "743-ПП, табл. 3.6.1", "title": "Теплосеть"},
+    {"object": "utility_tunnel", "source": "layer", "tree": 2.0, "shrub": 1.0, "rule": "SP42-T9.1-TUNNEL", "doc": "СП 42.13330, табл. 9.1", "title": "Коллектор"},
+    {"object": "lighting_mast", "source": "layer", "tree": 4.0, "rule": "PP743-T3.6.1-MAST", "doc": "743-ПП, табл. 3.6.1", "title": "Опора освещения, мачта"},
+    {"object": "retaining_wall", "source": "layer", "tree": 3.0, "shrub": 1.0, "rule": "PP743-T3.6.1-RETWALL", "doc": "743-ПП, табл. 3.6.1", "title": "Подпорная стенка"},
+    {"object": "tram_track", "source": "layer", "tree": 5.0, "shrub": 3.0, "rule": "PP743-T3.6.1-TRAM", "doc": "743-ПП, табл. 3.6.1", "title": "Трамвайные пути, опоры контактной сети"},
+    {"object": "playground_children", "source": "structure", "tree": 3.0, "rule": "MGSN-10202-4.12.7.3", "doc": "МГСН 1.02.02, п. 4.12.7.3", "title": "Край детской площадки"},
+    {"object": "overhead_power_line", "source": "layer", "tree": 2.0, "rule": "PPRF160-OHL-1KV", "doc": "ПП РФ 160 (ВЛ до 1 кВ)", "title": "Воздушная линия", "assumption": "Напряжение ВЛ неизвестно, взята охранная зона для ВЛ до 1 кВ"}
+  ],
+  "_context_comment": "Условия места: не запрещают посадку, а уточняют выбор растений. split=false — только пометка у секции, газон по ней не режется.",
+  "context": [
+    {"tag": "under_power_line", "object": "overhead_power_line", "source": "layer", "distance": 5.0, "title": "Под воздушной линией или рядом с ней"},
+    {"tag": "along_path", "object": "sidewalk", "source": "surface", "distance": 2.0, "title": "Вдоль тротуара или дорожки"},
+    {"tag": "along_path", "object": "paving", "source": "surface", "distance": 2.0, "title": "Вдоль тротуара или дорожки"},
+    {"tag": "roadside", "object": "roadway", "source": "surface", "distance": 5.0, "title": "У проезжей части: соль и выхлопные газы"},
+    {"tag": "near_playground", "object": "playground_children", "source": "structure", "distance": 10.0, "title": "У детской площадки: без ядовитых и колючих"},
+    {"tag": "near_sport_ground", "object": "playground_sport", "source": "structure", "distance": 5.0, "title": "У спортивной площадки"},
+    {"tag": "near_building", "object": "building_wall", "source": "layer", "distance": 8.0, "title": "У здания: тень и отмостка"},
+    {"tag": "existing_trees", "object": "tree_point", "source": "trees", "distance": 3.0, "title": "Под кронами существующих деревьев"},
+    {"tag": "slope", "object": "slope_foot", "source": "layer", "distance": 0.5, "title": "На откосе: штрихи откоса покрывают весь склон, поэтому это условие, а не отступ от подошвы"},
+    {"tag": "manhole_nearby", "object": "manhole", "source": "layer", "distance": 1.0, "title": "Рядом колодец: нужен доступ", "split": false},
+    {"tag": "fence_nearby", "object": "fence", "source": "layer", "distance": 1.0, "title": "Вдоль ограждения", "split": false},
+    {"tag": "unclassified_nearby", "object": null, "source": "unknown", "distance": 1.0, "title": "Рядом объект неизвестного слоя", "split": false}
+  ],
+  "_min_section_comment": "Секции меньше этой площади приклеиваются к соседней с не меньшими ограничениями.",
+  "min_section_area_m2": 5.0,
+  "_min_width_comment": "Тип посадки снимается с секции, если в ней нигде не помещается круг такого диаметра, м. Это параметр модуля, а не норматив.",
+  "min_planting_width_m": {"tree": 1.5, "shrub": 0.5}
+}

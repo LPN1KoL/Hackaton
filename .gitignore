@@ -1,0 +1,7 @@
+.llm_cache
+data
+jobs
+samples
+venv
+.env
+db.sqlite3

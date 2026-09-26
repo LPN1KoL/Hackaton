@@ -1,0 +1,32 @@
+# Запуск: docker compose up -d --build  →  http://<адрес машины>/ (порт 80)
+services:
+  greening:
+    build: .
+    image: greening-service
+    restart: unless-stopped
+    expose:
+      - "8080"
+    # BASE_URL, API_KEY (и необязательно LLM_MODEL) — ключ OpenAI-совместимого прокси для подбора растений;
+    # без .env или с GREENING_LLM=0 растения подбираются правилами, сеть не нужна
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-for-anything-public}
+      # за nginx сервис открывают по любому адресу машины (IP, имя в сети)
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      GREENING_LLM: ${GREENING_LLM:-1}
+    volumes:
+      - ./jobs:/app/jobs              # задачи и их результаты переживают пересоздание контейнера
+      - ./.llm_cache:/app/.llm_cache  # кэш ответов LLM: повторный прогон того же чертежа бесплатный
+      - ./data:/data                  # входные и выходные DXF для прогона из командной строки
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - greening
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro

@@ -1,0 +1,155 @@
+{% load static %}<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Загрузка DXF</title>
+    <link rel="stylesheet" href="{% static 'core/app.css' %}">
+</head>
+<body data-preview-url="{% url 'core:preview' %}" data-preview-upload="{{ preview_on_upload|yesno:'1,0' }}"
+      data-jobs-url="{% url 'core:job' 'JOB' %}">
+    <main class="stage">
+        <section class="step is-active" data-step="upload">
+            <h1>Загрузка чертежа</h1>
+            <p class="subtitle">Чертёж в формате DXF, геоподоснова — по желанию</p>
+
+            <form id="form" method="post" action="{% url 'core:upload' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+
+                {% include "core/_drop.html" with name="file" label="Файл чертежа" %}
+                {% include "core/_drop.html" with name="geobase" label="Файл геоподосновы (необязательно)" side="left" %}
+
+                <button type="submit" class="btn" id="submit" disabled>Загрузить</button>
+            </form>
+
+            <p class="error" id="error"></p>
+        </section>
+
+        <section class="step" data-step="processing">
+            <svg class="loader" viewBox="0 0 64 64" aria-hidden="true">
+                <path class="zone-green" style="--i: 0" d="M38.5 32.0L38.4 30.7L38.0 29.5L37.4 28.4L36.6 27.4L35.6 26.6L34.5 26.0L33.3 25.6L32.0 25.5L30.7 25.6L29.5 26.0L28.4 26.6L27.4 27.4L26.6 28.4L26.0 29.5L25.6 30.7L25.5 32.0L25.6 33.3L26.0 34.5L26.6 35.6L27.4 36.6L28.4 37.4L29.5 38.0L30.7 38.4L32.0 38.5L33.3 38.4L34.5 38.0L35.6 37.4L36.6 36.6L37.4 35.6L38.0 34.5L38.4 33.3Z" pathLength="1"/>
+                <path class="zone-yellow" style="--i: 1" d="M30.0 21.7L31.7 21.5L33.4 21.6L36.3 22.4L37.8 23.3L39.2 24.3L40.3 25.6L41.3 27.0L49.5 24.0L48.2 21.7L46.8 19.8L45.2 18.1L43.4 16.6L41.5 15.3L39.3 14.3L36.7 13.4L34.4 12.9L30.6 12.9L26.9 13.5Z" pathLength="1"/>
+                <path class="zone-red" style="--i: 2" d="M35.9 41.7L32.7 42.5L29.6 42.2L26.7 41.1L24.3 39.2L17.2 44.2L19.1 46.2L20.9 47.7L22.9 48.9L25.1 49.9L27.3 50.6L29.6 51.1L32.0 51.2L34.4 51.1L37.6 50.4L40.3 49.3Z" pathLength="1"/>
+                <path class="zone-green" style="--i: 3" d="M42.5 32.7L42.0 35.0L41.3 36.9L40.1 38.7L38.5 40.2L42.9 47.8L45.2 45.9L47.1 43.8L48.7 41.5L50.1 38.5L50.8 35.7L51.2 32.5L51.1 29.6L50.5 26.9L42.3 29.9Z" pathLength="1"/>
+                <path class="zone-green" style="--i: 4" d="M22.6 36.6L22.0 35.0L21.6 33.4L21.5 31.7L21.7 29.9L13.5 26.9L12.9 30.6L12.9 34.4L13.8 38.0L15.5 41.7Z" pathLength="1"/>
+                <path class="zone-yellow" style="--i: 5" d="M22.7 27.0L24.6 24.6L27.0 22.7L24.0 14.5L20.9 16.3L18.4 18.4L16.3 20.9L14.5 24.0Z" pathLength="1"/>
+                <path class="zone-red" style="--i: 6" d="M59.0 23.8L52.9 26.0L53.7 30.4L53.6 35.0L55.8 32.6L59.0 30.3Z" pathLength="1"/>
+                <path class="zone-yellow" style="--i: 7" d="M5.0 49.1L13.3 43.2L11.5 39.3L10.7 36.8L10.4 34.7L10.3 30.4L11.1 26.0L5.3 23.9L5.0 23.9Z" pathLength="1"/>
+                <path class="zone-green" style="--i: 8" d="M5.0 52.7L5.8 55.3L7.3 57.2L9.3 58.5L11.7 59.0L39.5 59.0L41.7 57.1L43.6 55.0L41.6 51.6L37.8 53.0L33.6 53.7L29.3 53.6L25.2 52.7L22.2 51.5L19.5 49.8L17.0 47.8L15.0 45.7Z" pathLength="1"/>
+                <path class="zone-red" style="--i: 9" d="M59.0 11.3L58.3 9.0L57.2 7.3L55.6 6.0L53.4 5.1L52.0 5.0L23.9 5.0L26.0 11.1L29.8 10.3L33.6 10.3L37.3 10.9L41.3 12.3L44.6 14.2L47.4 16.6L50.1 19.9L51.9 23.2L59.0 20.6Z" pathLength="1"/>
+                <path class="zone-green" style="--i: 10" d="M12.0 5.0L10.0 5.3L8.1 6.2L6.6 7.6L5.7 9.0L5.2 10.3L5.0 11.7L5.0 20.6L6.3 21.0L8.7 20.7L11.2 19.9L13.5 18.7L15.6 17.1L17.1 15.6L18.7 13.5L19.7 11.6L20.6 9.2L21.0 7.1L21.0 6.3L20.6 5.0Z" pathLength="1"/>
+                <path class="zone-yellow" style="--i: 11" d="M52.0 59.0L54.0 58.7L56.2 57.6L57.8 55.9L58.7 54.0L59.0 52.0L59.0 36.2L57.0 38.5L55.4 41.0L51.1 51.5L49.4 54.9L48.1 56.9L49.3 59.0Z" pathLength="1"/>
+            </svg>
+            <h1>Обработка</h1>
+            <p class="stage-line" id="stage-line">Отправка файла</p>
+            <ol class="stage-list" id="stage-list">
+                <li data-stage="markup">Разметка чертежа</li>
+                <li data-stage="llm">Подбор растений и обоснования</li>
+                <li data-stage="placement">Рассадка по нормам</li>
+                <li data-stage="dxf">Сборка DXF</li>
+                <li data-stage="view">Подготовка превью</li>
+            </ol>
+            <p class="note">Большой генплан может считаться несколько минут</p>
+        </section>
+
+        <section class="step" data-step="result">
+            <h1>Готово</h1>
+            <p class="subtitle">Файл обработан</p>
+
+            <div class="drop drop-static">
+                <span class="drop-bar">
+                    <span class="drop-cell">
+                        <span class="drop-name"></span>
+                        <span class="drop-meta"></span>
+                    </span>
+                </span>
+            </div>
+
+            <dl class="result-summary" id="result-summary"></dl>
+
+            <button type="button" class="btn" id="open-viewer">Открыть просмотр</button>
+            <a class="btn btn-ghost" id="download" download>Скачать DXF</a>
+            <a class="btn btn-ghost" id="download-plan" download>Скачать обоснование (JSON)</a>
+            <button type="button" class="btn btn-ghost" id="restart">Загрузить другой файл</button>
+        </section>
+    </main>
+
+    <footer class="steps">
+        <div class="steps-item is-active" data-for="upload">
+            <span class="steps-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 16V4"/>
+                    <path d="M7 9l5-5 5 5"/>
+                    <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/>
+                </svg>
+            </span>
+            <span>Загрузка</span>
+        </div>
+
+        <span class="steps-sep"></span>
+
+        <div class="steps-item" data-for="processing">
+            <span class="steps-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.4 2.6L21 8"/>
+                    <path d="M21 3v5h-5"/>
+                    <path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.4-2.6L3 16"/>
+                    <path d="M3 21v-5h5"/>
+                </svg>
+            </span>
+            <span>Обработка</span>
+        </div>
+
+        <span class="steps-sep"></span>
+
+        <div class="steps-item" data-for="result">
+            <span class="steps-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7z"/>
+                    <path d="M14 3v4h4"/>
+                    <path d="M9.5 14l1.8 1.8 3.4-3.6"/>
+                </svg>
+            </span>
+            <span>Результат</span>
+        </div>
+    </footer>
+
+    <div class="viewer" id="viewer" hidden>
+        <header class="viewer-bar">
+            <div class="viewer-head">
+                <span class="viewer-title"></span>
+                <span class="viewer-meta"></span>
+            </div>
+            <div class="viewer-actions">
+                <a class="viewer-button" data-link="dxf" download>Скачать DXF</a>
+                <a class="viewer-button" data-link="plan" download>Обоснование</a>
+                <button type="button" class="viewer-button" data-action="close">Закрыть</button>
+            </div>
+        </header>
+        <aside class="viewer-side">
+            <section>
+                <h2>Слои</h2>
+                <div class="viewer-layers-list"></div>
+            </section>
+            <section class="viewer-side-list">
+                <h2>Структуры</h2>
+                <input type="search" class="viewer-search" placeholder="Поиск: P0002, двор, проезд">
+                <div class="viewer-structures"></div>
+            </section>
+        </aside>
+        <div class="viewer-map">
+            <svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+            <div class="viewer-zoom">
+                <button type="button" data-action="zoom-in" aria-label="Приблизить">+</button>
+                <button type="button" data-action="zoom-out" aria-label="Отдалить">−</button>
+                <button type="button" data-action="fit" aria-label="Весь участок">⤢</button>
+                <button type="button" data-action="overview">Весь участок</button>
+            </div>
+        </div>
+        <aside class="viewer-info"></aside>
+    </div>
+
+    <script src="{% static 'core/viewer.js' %}"></script>
+    <script src="{% static 'core/app.js' %}"></script>
+</body>
+</html>

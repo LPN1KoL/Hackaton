@@ -1,0 +1,528 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Разметка зон на чертеже",
+    "version": "0.1.0",
+    "description": "Приём чертежей в DXF, отрисовка в SVG и полный конвейер озеленения: разметка, подбор растений LLM с обоснованиями, рассадка по нормам, итоговый DXF.\n\nОба метода принимают `multipart/form-data` и отвечают JSON.\nФайл проверяется дважды: по расширению `.dxf` и по началу содержимого —\nлибо сигнатура `AutoCAD Binary DXF`, либо групповой код `0`/`999` и слово `SECTION`\nв первом килобайте.\n\n**CSRF.** Django требует токен на любом POST. Токен приходит в cookie `csrftoken`\nпри открытии любой страницы сайта и повторяется в заголовке `X-CSRFToken`.\nКнопка «Try it out» ниже подставляет его сама.\n"
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Текущий хост"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Чертежи",
+      "description": "Превью и обработка"
+    },
+    {
+      "name": "Документация",
+      "description": "Эта страница"
+    }
+  ],
+  "paths": {
+    "/preview/": {
+      "post": {
+        "tags": [
+          "Чертежи"
+        ],
+        "summary": "Превью чертежа",
+        "description": "Отрисовывает DXF в SVG, ничего не сохраняя. Используется фронтендом сразу после\nвыбора файла, если включён флаг `PREVIEW_ON_UPLOAD`.\n",
+        "operationId": "preview",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Чертёж в формате DXF, ASCII или binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Файл разобран",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Drawing"
+                },
+                "examples": {
+                  "withGeometry": {
+                    "summary": "Чертёж с геометрией",
+                    "value": {
+                      "name": "test.dxf",
+                      "size": 950,
+                      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 884173 618595\">…</svg>",
+                      "layers": [
+                        {
+                          "name": "0",
+                          "color": 7,
+                          "visible": true
+                        },
+                        {
+                          "name": "Defpoints",
+                          "color": 7,
+                          "visible": true
+                        }
+                      ],
+                      "note": null
+                    }
+                  },
+                  "empty": {
+                    "summary": "Геометрии нет",
+                    "value": {
+                      "name": "empty.dxf",
+                      "size": 402,
+                      "svg": null,
+                      "layers": [],
+                      "note": "В файле нет геометрии для отрисовки."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadFile"
+          },
+          "403": {
+            "$ref": "#/components/responses/NoCsrf"
+          },
+          "405": {
+            "$ref": "#/components/responses/WrongMethod"
+          }
+        }
+      }
+    },
+    "/upload/": {
+      "post": {
+        "tags": [
+          "Чертежи"
+        ],
+        "summary": "Запуск обработки чертежа",
+        "description": "Принимает чертёж (и необязательно геоподоснову) и запускает в фоне конвейер greening: разметка → подбор растений LLM → рассадка → DXF. Отвечает сразу номером задачи; ход — `GET /jobs/{job}/`, результаты — `GET /jobs/{job}/{kind}/`.\n",
+        "operationId": "upload",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Чертёж в формате DXF"
+                  },
+                  "geobase": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Геоподоснова в формате DXF (необязательно)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Задача запущена",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "job",
+                    "name",
+                    "size"
+                  ],
+                  "properties": {
+                    "job": {
+                      "type": "string",
+                      "description": "Номер задачи (32 шестнадцатеричных символа)"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "description": "Размер чертежа, байт"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadFile"
+          }
+        }
+      }
+    },
+    "/docs/": {
+      "get": {
+        "tags": [
+          "Документация"
+        ],
+        "summary": "Страница документации",
+        "description": "Swagger UI поверх этой же спеки.",
+        "operationId": "docsPage",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "HTML-страница",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Документация"
+        ],
+        "summary": "Спека в JSON",
+        "description": "Отдаёт этот документ целиком. CSRF-токен не нужен: запрос ничего не меняет.",
+        "operationId": "docsSchema",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Документ OpenAPI",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{job}/": {
+      "get": {
+        "tags": [
+          "Чертежи"
+        ],
+        "summary": "Ход обработки",
+        "operationId": "job",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Состояние задачи",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "running",
+                        "done",
+                        "error"
+                      ]
+                    },
+                    "stage": {
+                      "type": "string",
+                      "enum": [
+                        "markup",
+                        "llm",
+                        "placement",
+                        "dxf",
+                        "view"
+                      ],
+                      "description": "Текущий этап"
+                    },
+                    "stage_title": {
+                      "type": "string"
+                    },
+                    "done": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Этап llm: сколько структур готово"
+                    },
+                    "total": {
+                      "type": "integer",
+                      "nullable": true,
+                      "description": "Этап llm: сколько всего"
+                    },
+                    "error": {
+                      "type": "string",
+                      "description": "При state=error"
+                    },
+                    "summary": {
+                      "type": "object",
+                      "description": "При state=done: структуры, зоны, растения, нарушения"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Нет такой задачи"
+          }
+        }
+      }
+    },
+    "/jobs/{job}/{kind}/": {
+      "get": {
+        "tags": [
+          "Чертежи"
+        ],
+        "summary": "Результат обработки",
+        "operationId": "job_result",
+        "description": "`dxf` — исходный чертёж со слоями рассадки `Greening_*`; `plan` — подбор растений и обоснования по структурам, зонам и посадкам (нормы и пункты НПА); `placement` — рассадка в GeoJSON; `view` — данные интерактивного просмотра.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "dxf",
+                "plan",
+                "placement",
+                "view"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Файл результата"
+          },
+          "404": {
+            "description": "Нет задачи или результат ещё не готов"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "csrfToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRFToken",
+        "description": "Значение cookie `csrftoken`, полученной при открытии любой страницы сайта."
+      }
+    },
+    "responses": {
+      "BadFile": {
+        "description": "Файл не прошёл проверку или его не удалось разобрать.\nКлюч в `errors` — имя поля формы, значение — список сообщений.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Errors"
+            },
+            "examples": {
+              "extension": {
+                "summary": "Не тот формат",
+                "value": {
+                  "errors": {
+                    "file": [
+                      "Ожидается файл с расширением .dxf."
+                    ]
+                  }
+                }
+              },
+              "content": {
+                "summary": "Содержимое не похоже на DXF",
+                "value": {
+                  "errors": {
+                    "file": [
+                      "Содержимое файла не похоже на DXF."
+                    ]
+                  }
+                }
+              },
+              "broken": {
+                "summary": "Файл не разобрался",
+                "value": {
+                  "errors": {
+                    "file": [
+                      "Не удалось разобрать файл: …"
+                    ]
+                  }
+                }
+              },
+              "missing": {
+                "summary": "Поле не заполнено",
+                "value": {
+                  "errors": {
+                    "file": [
+                      "Обязательное поле."
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "NoCsrf": {
+        "description": "Нет CSRF-токена или он не совпал с cookie. Ответ — HTML-страница Django, не JSON.",
+        "content": {
+          "text/html": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WrongMethod": {
+        "description": "Метод не POST. Тело пустое, заголовок `Allow: POST` называет разрешённый метод.\n",
+        "headers": {
+          "Allow": {
+            "schema": {
+              "type": "string"
+            },
+            "example": "POST"
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Drawing": {
+        "type": "object",
+        "required": [
+          "name",
+          "size",
+          "svg",
+          "layers",
+          "note"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Имя присланного файла",
+            "example": "test.dxf"
+          },
+          "size": {
+            "type": "integer",
+            "description": "Размер присланного файла в байтах",
+            "example": 950
+          },
+          "svg": {
+            "type": "string",
+            "nullable": true,
+            "description": "Готовая картинка без атрибутов `width`/`height` — тянется по контейнеру.\nПримитивы разложены по группам `<g data-layer=\"…\">`.\n`null`, если рисовать нечего или превью слишком большое; причина тогда в `note`.\n"
+          },
+          "layers": {
+            "type": "array",
+            "description": "Слои чертежа в порядке их объявления в DXF",
+            "items": {
+              "$ref": "#/components/schemas/Layer"
+            }
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "description": "Причина, по которой `svg` пуст. `null`, когда картинка отрисована.",
+            "enum": [
+              "В файле нет геометрии для отрисовки.",
+              "Чертёж слишком большой для превью.",
+              null
+            ]
+          }
+        }
+      },
+      "Layer": {
+        "type": "object",
+        "required": [
+          "name",
+          "color",
+          "visible"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "0"
+          },
+          "color": {
+            "description": "`#rrggbb`, если у слоя задан true color, иначе номер цвета ACI.",
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^#[0-9a-f]{6}$",
+                "example": "#45b36b"
+              },
+              {
+                "type": "integer",
+                "example": 7
+              }
+            ]
+          },
+          "visible": {
+            "type": "boolean",
+            "description": "Слой включён и не заморожен",
+            "example": true
+          }
+        }
+      },
+      "Errors": {
+        "type": "object",
+        "required": [
+          "errors"
+        ],
+        "properties": {
+          "errors": {
+            "type": "object",
+            "description": "Ошибки по полям формы",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "csrfToken": []
+    }
+  ]
+}

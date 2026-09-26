@@ -1,0 +1,11 @@
+venv
+jobs
+.llm_cache
+data
+staticfiles
+db.sqlite3
+.env
+**/__pycache__
+**/*.pyc
+*.dxf
+!samples/*.dxf

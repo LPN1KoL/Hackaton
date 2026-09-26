@@ -1,0 +1,98 @@
+{
+  "_comment": [
+    "Классификация слоёв DXF. Имя слоя сначала нормализуется: отрезается префикс листа до «$0$»",
+    "(привязанные внешние ссылки) и «$N$» в начале, регистр и разделители (_ - |) приводятся к пробелам.",
+    "Побеждает правило с наибольшим priority; при равных — первое в списке.",
+    "Основа — vlad/config/cad_classification.json из ветки artem, дополнено по генплану Олимпийской деревни."
+  ],
+  "ignore": [
+    "координатн.*крест", "^рамк[аи]$", "^подписи рамок$", "^дв офр рамка$", "^красные линии$",
+    "^горизонтали$", "^defpoints$", "^геодезические пункты$", "^номер дома$", "^0 карта$",
+    "размер", "^разметка$", "^ разметка", "разметка ", "^надписи разметка$", "traffic line"
+  ],
+  "rules": [
+    {"pattern": "границ[аы] работ", "kind": "work_boundary", "priority": 200},
+    {"pattern": "границ[аы] благоустройства", "kind": "work_boundary", "priority": 190},
+    {"pattern": "границ[аы] заказа", "kind": "order_boundary", "priority": 170},
+
+    {"pattern": "границ[аы] площадки", "kind": "site_outline", "priority": 160},
+    {"pattern": "лес[аы] и газоны|^газон$|\\(газон\\)|восстановление газона|устройство газона", "kind": "lawn_edge", "priority": 160},
+    {"pattern": "граница растительности", "kind": "vegetation_edge", "priority": 160},
+    {"pattern": "цветник|клумб", "kind": "flowerbed", "priority": 160},
+    {"pattern": "пояснительные подписи", "kind": "label", "priority": 160},
+
+    {"pattern": "школ|детск.*сад", "kind": "building_school_kindergarten", "priority": 150},
+    {"pattern": "водосток|дренаж|дождеприемн|водоотводн|(^| )дп( |$)", "kind": "drainage", "priority": 150},
+    {"pattern": "лэп|возд.* лини|воздушн.*электр|сип |(^| )вл( |$)", "kind": "overhead_power_line", "priority": 150},
+    {"pattern": "колод|люк|(^| )дк( |$)", "kind": "manhole", "priority": 140},
+    {"pattern": "трамвайн.* пут|рельс", "kind": "tram_track", "priority": 130},
+
+    {"pattern": "кабел.* связ|связи|телеграф|телефон|ккс|мгтс|(^| )сс( |$)", "kind": "comm_cable", "priority": 120},
+    {"pattern": "водопровод|(^| )в1( |$)", "kind": "water_supply", "priority": 100},
+    {"pattern": "канализац", "kind": "sewer", "priority": 100},
+    {"pattern": "газопровод|(^| )газ( |$)", "kind": "gas_pipeline", "priority": 100},
+    {"pattern": "тепло", "kind": "heating_network", "priority": 100},
+    {"pattern": "кабел|электр|освещен(?!.*опор)|(^| )кл( |$)|труба ?[0-9]|футляр", "kind": "power_comm_cable", "priority": 100},
+    {"pattern": "коллектор|подземные ком", "kind": "utility_tunnel", "priority": 100},
+    {"pattern": "трубопровод|(^| )трубы( |$)", "kind": "pipeline_other", "priority": 90},
+
+    {"pattern": "столб|фонар|светофор|светильник|опор|мачт|рожок", "kind": "lighting_mast", "priority": 110},
+    {"pattern": "здан|крыльц|навес|парапет|павильон|спец сооруж|вентилятор|вышк|выгребн|стилобат", "kind": "building_wall", "priority": 100},
+    {"pattern": "фонтан|памятник", "kind": "building_wall", "priority": 100},
+    {"pattern": "подпорн|retaining", "kind": "retaining_wall", "priority": 110},
+    {"pattern": "оград|забор|полусфер|антипарков", "kind": "fence", "priority": 100},
+    {"pattern": "откос", "kind": "slope_foot", "priority": 100},
+    {"pattern": "лестниц|пандус|мост|stairs|ramp", "kind": "stairs_ramp", "priority": 100},
+    {"pattern": "маф|урн|скам|контейнер|вело|стел|флаг", "kind": "small_architecture", "priority": 100},
+
+    {"pattern": "бортов|(^| )борт( |$)|бордюр|kerb|curb|^бр \\d|^гп ?\\d|^гп \\d+", "kind": "kerb", "priority": 110},
+    {"pattern": "тротуар", "kind": "sidewalk_path", "priority": 100},
+    {"pattern": "граница улицы", "kind": "street_edge", "priority": 100},
+    {"pattern": "дорог|проезд|проезжая|автодорог", "kind": "carriageway_edge", "priority": 100},
+
+    {"pattern": "полоса деревьев|дерев|кустарн|озелен|растительност", "kind": "tree", "priority": 100}
+  ],
+  "_hatch_comment": [
+    "Штриховки покрытий генплана вида «_АБ ТР-ГЗН»: слева — покрытие сейчас, справа — по проекту.",
+    "Код покрытия переводится в тип поверхности; берётся проектное (правое)."
+  ],
+  "surface_codes": {
+    "ГЗН": "lawn",
+    "АБ ТР": "sidewalk",
+    "ПЛ ТР": "sidewalk",
+    "АБ ПЧ": "roadway",
+    "ЩМА ПЧ": "roadway",
+    "Щ": "gravel"
+  },
+  "_hatch_layers_comment": "Если имя слоя штриховки не в формате «было-стало», тип покрытия ищется по ключевым словам (сверху вниз).",
+  "surface_hatch_layers": [
+    {"pattern": "hatch.*(grass|lawn)|газон", "surface": "lawn"},
+    {"pattern": "hatch.*(sidewalk|footpath|pavement)", "surface": "sidewalk"},
+    {"pattern": "hatch.*(road|carriageway)", "surface": "roadway"},
+    {"pattern": "устройство.?площадк", "surface": "playground"}
+  ],
+  "surface_hatch_pattern": "^_?((?:АБ|ПЛ|ЩМА|ГЗН|Щ)(?: (?:ТР|ПЧ))?)-((?:АБ|ПЛ|ЩМА|ГЗН|Щ)(?: (?:ТР|ПЧ))?)",
+  "_labels_comment": "Подписи на чертеже → тип поверхности или структуры. Сравнение без регистра, по началу текста после удаления пробелов.",
+  "labels": [
+    {"pattern": "^дет\\.?пл", "structure": "playground_children", "surface": "playground"},
+    {"pattern": "^спорт\\.?пл", "structure": "playground_sport", "surface": "playground"},
+    {"pattern": "^спец\\.?покр", "structure": "special_surface", "surface": "playground"},
+    {"pattern": "^мощение|^газонмощение", "surface": "paving"},
+    {"pattern": "^газон", "surface": "lawn"},
+    {"pattern": "^клумба|^цветник", "surface": "flowerbed"},
+    {"pattern": "^а\\.?$|^асф", "surface": "sealed"},
+    {"pattern": "^ц\\.?$|^ц\\.?пл", "surface": "sealed"},
+    {"pattern": "^пл\\.?$|^б\\.?$|^плитка", "surface": "paving"},
+    {"pattern": "^щ\\.?$", "surface": "gravel"},
+    {"pattern": "^гр\\.?$|^грунт", "surface": "ground"},
+    {"pattern": "^дер\\.?настил", "surface": "paving"},
+    {"pattern": "^гравий|^наволщебня", "surface": "gravel"},
+    {"pattern": "^трибун", "structure": "stands", "surface": "sealed"},
+    {"pattern": "^летнеекафе", "structure": "cafe", "surface": "sealed"},
+    {"pattern": "^гараж", "structure": "garage", "surface": "sealed"},
+    {"pattern": "^бытовк|^склад", "structure": "service_building", "surface": "sealed"},
+    {"pattern": "^вольер", "structure": "dog_area", "surface": "playground"},
+    {"pattern": "^экспозиц", "structure": "exposition", "surface": "sealed"},
+    {"pattern": "^парковк", "structure": "parking", "surface": "roadway"}
+  ]
+}

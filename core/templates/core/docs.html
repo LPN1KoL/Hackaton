@@ -1,0 +1,41 @@
+{% load static %}<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>API — Загрузка DXF</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+    <style>
+        body { margin: 0; }
+        .swagger-ui .topbar { display: none; }
+    </style>
+</head>
+<body>
+    <div id="swagger"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+        (function () {
+            'use strict';
+
+            // «Try it out» шлёт настоящий POST, а Django ждёт токен из cookie в заголовке
+            function csrfToken() {
+                const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
+                return match ? decodeURIComponent(match[1]) : '';
+            }
+
+            SwaggerUIBundle({
+                url: "{% static 'core/openapi.json' %}",
+                dom_id: '#swagger',
+                docExpansion: 'list',
+                defaultModelsExpandDepth: 1,
+                tryItOutEnabled: true,
+                requestInterceptor: function (request) {
+                    request.headers['X-CSRFToken'] = csrfToken();
+                    return request;
+                },
+            });
+        }());
+    </script>
+</body>
+</html>

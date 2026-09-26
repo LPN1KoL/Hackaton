@@ -1,0 +1,28 @@
+<div class="field" data-field="{{ name }}">
+    <span class="field-label">{{ label }}</span>
+
+    <label class="drop">
+        <input type="file" name="{{ name }}" id="{{ name }}" accept=".dxf">
+
+        <span class="drop-prompt">
+            <span class="drop-prompt-title">Выберите файл или перетащите сюда</span>
+            <span class="drop-prompt-hint">.dxf</span>
+        </span>
+
+        <span class="drop-bar" hidden>
+            <span class="drop-cell">
+                <span class="drop-status">
+                    <span class="spinner spinner-sm"></span>
+                    <span class="drop-percent">0%</span>
+                </span>
+                <span class="drop-name"></span>
+            </span>
+            {% if preview_on_upload %}
+                <span class="drop-divider"></span>
+                <span class="drop-cell">{% include "core/_preview_toggle.html" %}</span>
+            {% endif %}
+        </span>
+    </label>
+
+    {% if preview_on_upload %}{% include "core/_preview.html" %}{% endif %}
+</div>

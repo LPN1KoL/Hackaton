@@ -1,0 +1,9 @@
+# сервис и конвейер озеленения; matplotlib нужен только для отладочных картинок — сюда не входит
+Django==6.1.1
+ezdxf==1.4.4
+shapely==2.1.2
+numpy==2.5.3
+# отрисовка превью ezdxf (core/rendering.py)
+pillow==12.3.0
+whitenoise==6.9.0
+gunicorn==23.0.0
