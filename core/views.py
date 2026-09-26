@@ -81,7 +81,20 @@ def job(request, job_id):
     state = jobs.status(job_id)
     if state is None:
         raise Http404('Нет такой задачи')
+    # опрос статуса — знак, что результат ещё ждут: брошенная задача не держит очередь (core/jobs.py)
+    jobs.touch(job_id)
     return JsonResponse(state)
+
+
+@require_POST
+def job_cancel(request, job_id):
+    """Отмена задачи: страница шлёт её, когда её закрывают. Готовые результаты не трогаются."""
+    state = jobs.status(job_id)
+    if state is None:
+        raise Http404('Нет такой задачи')
+    if state.get('state') in ('queued', 'running'):
+        jobs.cancel(job_id)
+    return JsonResponse({'job': job_id, 'state': state.get('state')}, status=202)
 
 
 # что отдаётся из папки результата: имя в URL → (файл, тип, скачивание под именем)

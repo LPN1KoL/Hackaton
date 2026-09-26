@@ -150,9 +150,13 @@ PREVIEW_ON_UPLOAD = False
 JOBS_DIR = BASE_DIR / 'jobs'
 # одновременно считаемых задач: разметка Олимпийской деревни занимает несколько гигабайт
 GREENING_JOBS = 1
+# задача, чей статус не опрашивали дольше стольких секунд, брошена и отменяется (страница опрашивает каждые
+# 1,5 с; фоновая вкладка Chrome — не реже раза в минуту). API-клиенту: опрашивайте GET /jobs/<id>/ чаще
+GREENING_JOB_ABANDON_S = int(os.environ.get('GREENING_JOB_ABANDON_S', '180'))
 # кэш ответов LLM общий для всех задач: повторная загрузка того же чертежа не тратит токены
 GREENING_LLM_CACHE = BASE_DIR / '.llm_cache'
-GREENING_LLM_WORKERS = 4
+# сколько запросов к LLM идёт параллельно (по одной структуре или её части на запрос)
+GREENING_LLM_WORKERS = int(os.environ.get('GREENING_LLM_WORKERS', '5'))
 # False (или переменная окружения GREENING_LLM=0) — подбор растений правилами, без LLM и сети;
 # без BASE_URL/API_KEY в .env правила включаются сами
 GREENING_LLM = os.environ.get('GREENING_LLM', '1') != '0'

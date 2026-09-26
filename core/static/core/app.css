@@ -868,7 +868,8 @@ body.has-viewer { overflow: hidden; }
 .v-object { fill: var(--v-playground); stroke: #8a5a86; vector-effect: non-scaling-stroke; }
 .v-object-point { fill: #777; }
 .v-rows { fill: var(--v-tree); fill-opacity: 0.1; stroke: var(--v-tree); stroke-opacity: 0.4; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
-.v-existing { fill: none; stroke: var(--v-tree); vector-effect: non-scaling-stroke; }
+.v-existing { fill: var(--v-tree); fill-opacity: 0.06; stroke: var(--v-tree); stroke-opacity: 0.7; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; }
+.v-existing-trunk { fill: var(--v-tree); }
 .v-plant { vector-effect: non-scaling-stroke; cursor: pointer; }
 .pl-tree { fill: var(--p-tree); fill-opacity: 0.55; stroke: #0d3d14; }
 .pl-shrub { fill: var(--p-shrub); fill-opacity: 0.85; stroke: #2d5a1e; stroke-width: 0.6; }

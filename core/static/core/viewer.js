@@ -145,8 +145,12 @@
         });
 
         if (D.rows) el('path', { d: D.rows, 'class': 'v-rows' }, groups.existing);
+        // существующее дерево: условная крона пунктиром (в подоснове размера кроны нет) и точка ствола
+        const crown = (D.existing_crown || 6) / 2;
         D.trees.forEach(function (t) {
-            el('circle', { cx: t[0], cy: t[1], r: 0.6, 'class': 'v-existing' }, groups.existing);
+            const c = el('circle', { cx: t[0], cy: t[1], r: crown, 'class': 'v-existing' }, groups.existing);
+            title(c, 'Существующее дерево (крона условно ' + (crown * 2) + ' м)');
+            el('circle', { cx: t[0], cy: t[1], r: 0.3, 'class': 'v-existing-trunk' }, groups.existing);
         });
 
         // группы и изгороди кустов — один контур с подписью «вид ×N»; внутри — точки посадочных мест
@@ -210,8 +214,8 @@
     // ---------- объяснения ----------
 
     function unitText(p) {
-        const placed = p.unit === 'шт' ? ' (посажено ' + p.placed + ')' : '';
-        return esc(p.quantity) + ' ' + esc(p.unit || '') + placed;
+        // количество считает рассадка, а не LLM: показываем посаженное
+        return esc(p.placed) + ' ' + esc(p.unit === 'шт' ? 'шт' : 'м²');
     }
 
     function plantingCard(s, p) {
@@ -286,7 +290,6 @@
             '<dt>Новых кустарников</dt><dd>' + count('shrub') + '</dd>' +
             '<dt>Цветники и газон, м²</dt><dd>' + Math.round(count('herbaceous_m2')) + '</dd>' +
             '<dt>Нарушений правил рассадки</dt><dd>' + (s.violations != null ? s.violations : '—') + '</dd>' +
-            (s.model ? '<dt>Модель</dt><dd>' + esc(s.model) + '</dd>' : '') +
             '</dl>';
     }
 

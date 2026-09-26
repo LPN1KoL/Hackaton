@@ -10,5 +10,6 @@ urlpatterns = [
     path('preview/', views.preview, name='preview'),
     path('upload/', views.upload, name='upload'),
     path('jobs/<str:job_id>/', views.job, name='job'),
+    path('jobs/<str:job_id>/cancel/', views.job_cancel, name='job_cancel'),
     path('jobs/<str:job_id>/<str:kind>/', views.job_result, name='job_result'),
 ]

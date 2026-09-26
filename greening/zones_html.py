@@ -17,7 +17,7 @@ from pathlib import Path
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
-from . import recommend
+from . import place, recommend
 from .split import MARGIN
 
 SIMPLIFY = 0.05
@@ -85,6 +85,8 @@ def build(geojson, plan=None, placement=None):
         'surfaces': [{'kind': p['surface'], 'd': _path(g)} for g, p in features
                      if p['layer'] == 'surface' and p['surface'] in SURFACES],
         'trees': [[round(g.x, 2), round(-g.y, 2)] for g, p in features if p['layer'] == 'tree'],
+        # у существующих деревьев в подоснове только значок ствола — крона рисуется условной
+        'existing_crown': place.load_config().get('existing_crown_m', 6.0),
         'rows': ''.join(_path(g) for g, p in features if p['layer'] == 'tree_row'),
         'objects': [],
         'bans': [],
@@ -118,7 +120,8 @@ def build(geojson, plan=None, placement=None):
         plantings, details = {}, []
         for number, item in enumerate(answer.get('plantings', [])):
             plantings.setdefault(item['zone'], []).append(
-                f"{item.get('name', item['plant_id'])} — {item.get('quantity')} {item.get('unit', '')}".strip())
+                f"{item.get('name', item['plant_id'])}"
+                + (f" — {item['quantity']} {item.get('unit', '')}".rstrip() if item.get('quantity') is not None else ''))
             # полное объяснение посадки: текст LLM (reason) и то, что пишет код (norms, facts, warnings)
             details.append({'i': number, 'zone': item['zone'], 'name': item.get('name', item.get('plant_id')),
                             'group': item.get('group'), 'role': item.get('role'), 'quantity': item.get('quantity'),

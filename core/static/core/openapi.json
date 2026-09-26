@@ -249,7 +249,8 @@
                         "queued",
                         "running",
                         "done",
-                        "error"
+                        "error",
+                        "cancelled"
                       ]
                     },
                     "stage": {
@@ -278,7 +279,7 @@
                     },
                     "error": {
                       "type": "string",
-                      "description": "При state=error"
+                      "description": "При state=error или cancelled — причина"
                     },
                     "summary": {
                       "type": "object",
@@ -292,7 +293,8 @@
           "404": {
             "description": "Нет такой задачи"
           }
-        }
+        },
+        "description": "Опрашивайте не реже раза в 3 минуты (GREENING_JOB_ABANDON_S): задача без опросов считается брошенной и отменяется — в очереди снимается, в работе останавливается на ближайшем этапе."
       }
     },
     "/jobs/{job}/{kind}/": {
@@ -333,6 +335,49 @@
           },
           "404": {
             "description": "Нет задачи или результат ещё не готов"
+          }
+        }
+      }
+    },
+    "/jobs/{job}/cancel/": {
+      "post": {
+        "tags": [
+          "Чертежи"
+        ],
+        "summary": "Отменить обработку",
+        "operationId": "job_cancel",
+        "description": "Задача в очереди или в работе отменяется (state=cancelled) и освобождает очередь. Страница шлёт отмену сама, когда её закрывают. Готовая задача не меняется.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Отмена принята",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Нет такой задачи"
           }
         }
       }

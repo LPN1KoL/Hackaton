@@ -576,6 +576,7 @@
             showStage(state);
             if (state.state === 'done') return state;
             if (state.state === 'error') throw new Error('Обработка не удалась: ' + (state.error || 'неизвестная ошибка'));
+            if (state.state === 'cancelled') throw new Error('Обработка остановлена: ' + (state.error || 'отменена'));
             await sleep(POLL_MS);
         }
     }
@@ -613,9 +614,23 @@
         stageItems.forEach(function (item) { item.classList.remove('is-done', 'is-active'); });
         goTo('processing');
 
+        // страницу закрывают, пока чертёж считается, — задача отменяется и не держит очередь для других
+        let running = null;
+        function abandon(event) {
+            if (!running || event.persisted) return;
+            const body = new FormData();
+            body.append('csrfmiddlewaretoken', form.elements.csrfmiddlewaretoken.value);
+            navigator.sendBeacon(jobUrl(running, 'cancel/'), body);
+        }
+        window.addEventListener('pagehide', abandon);
+
         try {
             const started = await post(form.action, files);
-            const state = await waitFor(started.job);
+            running = started.job;
+            const state = await waitFor(started.job).finally(function () {
+                running = null;
+                window.removeEventListener('pagehide', abandon);
+            });
 
             job = { id: started.job, name: started.name, summary: state.summary, view: null };
             downloadLink.href = jobUrl(job.id, 'dxf/');

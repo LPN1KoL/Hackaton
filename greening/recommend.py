@@ -24,11 +24,13 @@ from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+import numpy as np
+import shapely
 from shapely import STRtree
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
-from . import blocks, catalog, justify, rules
+from . import blocks, catalog, justify, place, rules
 
 # укладывается в ограничение цены аккаунта прокси (≤100 ₽ за 1 млн токенов); Sonnet туда не проходит
 DEFAULT_MODEL = 'google/gemini-3.1-pro-preview'
@@ -61,6 +63,12 @@ SURFACE_NAMES = {
 GROUPS = {'tree': ('ДЛ', 'ДХ'), 'shrub': ('КЛ', 'КХ', 'Л'), 'herbaceous': ('М', 'О', 'Б', 'Г')}
 PLANTING_NAMES = {'tree': 'деревья', 'shrub': 'кустарники', 'herbaceous': 'травянистые'}
 PLANTING_ORDER = ('tree', 'shrub')
+# вместимость зоны для новых деревьев: шаг между ними и отступ от старых стволов — как в config/placement.json
+# (tree_spacing_m, existing_tree_clearance_m.tree); сетка поиска мест, м
+_PLACEMENT = place.load_config()
+TREE_SPACING = _PLACEMENT['tree_unit_spacing_m']
+EXISTING_CLEARANCE = _PLACEMENT['existing_tree_clearance_m']['tree']
+ROOM_STEP = 1.0
 # газон для мелких участков, которые не отправляются в LLM: обыкновенный и теневыносливый
 LAWN, SHADE_LAWN = 'Т001', 'Т002'
 SHADE_TAGS = ('existing_trees', 'near_building')
@@ -99,13 +107,15 @@ SYSTEM = """Ты ландшафтный архитектор, проектиру
 - соблюдай свойства: дп не рядом с детскими и спорт. площадками; шк не ближе 10 м от жилых домов (не в зоны с условием «у здания»); г не у проезжей части; пл не рядом с плодовыми; учитывай свет (с/п/т) и условия зоны;
 - зоны «у проезжей части» — устойчивые к соли и газам; «под кронами существующих деревьев» — теневыносливые; «вдоль дорожки» — без колючих и не загораживающие проход;
 - в каждой зоне с разрешёнными травянистыми предложи покрытие (газон или цветник);
-- количество деревьев и кустарников реалистично для площади зоны (дерево ~ 25–50 м², кустарник ~ 1–4 м²);
+- деревья — основной ярус озеленения: в каждой зоне, где разрешены деревья и есть место под новые (указано в описании), выбери дерево и приём (солитер, группа, рядовая посадка); тень от существующих деревьев не причина отказываться — выбери теневыносливые или компактные виды; кустарники — второй ярус;
+- в зоны ближе 10 м к зданию (расстояние дано в описании) — только компактные деревья без широкой кроны;
+- ты выбираешь виды и приём посадки, а количество и точную расстановку считает алгоритм по площади, нормам и просветам между растениями; поэтому нигде не называй количество растений и площади посадок;
 - ассортимент «о» (основной) предпочтительнее «д» и «п».
 Обоснование — убедительное и конкретное, для заказчика ДПиООС: социальная польза (кто пользуется местом, безопасность, тень, шум, пыль), экономика (стоимость, долговечность, приживаемость), обслуживание (уход, стрижка, полив, уборка листвы), экология и эстетика по сезонам. Ссылайся только на нормы, переданные в описании, не выдумывай пункты.
 Объясни каждую зону из описания (кроме мелких газонов, решённых без подбора) — и ту, где сажаешь, и ту, где ничего не сажаешь или ничего нельзя. Для каждой: что это за место простыми словами по описанию окружения («полоса между проездом и тротуаром», «карман между дорожками», «газон у торца дома») и почему здесь такое решение. Если в зоне нельзя ничего — объясни почему (причина дана в описании) и чем место остаётся.
 В тексте (reason, justification, zones) не используй коды справочника — ни id, ни буквы свойств и групп: только названия растений и обычные слова. Номера зон (z1…) в тексте тоже не упоминай.
 Ответ — только JSON, в "zones" по одной записи на каждую зону, в "justification" — замысел для структуры целиком:
-{"plantings":[{"zone":"z1","plant_id":"Д032","role":"солитер|группа|рядовая посадка|живая изгородь|куртина|цветник|газон","quantity":3,"unit":"шт|м2","reason":"почему это растение здесь"}],"zones":[{"zone":"z1","place":"что это за место","decision":"что здесь и почему, 1–3 предложения"}],"justification":"обоснование решения по структуре целиком, 5–8 предложений"}"""
+{"plantings":[{"zone":"z1","plant_id":"Д032","role":"солитер|группа|рядовая посадка|живая изгородь|куртина|цветник|газон","reason":"почему это растение здесь"}],"zones":[{"zone":"z1","place":"что это за место","decision":"что здесь и почему, 1–3 предложения"}],"justification":"обоснование решения по структуре целиком, 5–8 предложений"}"""
 
 
 def load_env(path=ENV):
@@ -240,11 +250,12 @@ def _empty_reason(zone):
     return 'нормативные отступы исключают посадки' + (f': {rules}' if rules else '')
 
 
-def _zones(members, buildings, around=None):
+def _zones(members, buildings, around=None, trees=None):
     """Секции структуры → зоны по разрешённым посадкам; условия места с долей площади.
 
     building_m — расстояние от зоны до ближайшего здания (для широких крон), None — зданий нет.
     around — Surroundings: у зоны появляются соседи границы и название места.
+    trees — STRtree существующих деревьев: у зоны с деревьями — их число и ориентир вместимости новых.
     """
     groups = defaultdict(list)
     shapes = defaultdict(list)
@@ -300,6 +311,7 @@ def _zones(members, buildings, around=None):
             'surface': {k: round(v, 2) for k, v in surface.most_common()},
             'blocked_by': blocked,
             'near_ground': any(tags.get(t) for t in GROUND_TAGS),
+            **_tree_room(merged[allowed], area, allowed, trees),
             **place,
         })
     for number, zone in enumerate(zones, 1):
@@ -307,6 +319,29 @@ def _zones(members, buildings, around=None):
         if not zone['allowed']:
             zone['empty_reason'] = _empty_reason(zone)
     return zones
+
+
+def _tree_room(geometry, area, allowed, trees):
+    """Существующие деревья в зоне и вместимость новых: жадная расстановка по сетке ROOM_STEP с шагом
+    TREE_SPACING между новыми и не ближе EXISTING_CLEARANCE к старым стволам — те же правила, что у рассадки."""
+    near = [trees.geometries[int(i)] for i in trees.query(geometry.buffer(EXISTING_CLEARANCE), predicate='intersects')] \
+        if trees is not None else []
+    existing = sum(1 for t in near if geometry.buffer(1.0).contains(t))
+    if 'tree' not in allowed:
+        return {'existing_trees': existing}
+    minx, miny, maxx, maxy = geometry.bounds
+    xs = np.arange(minx + ROOM_STEP / 2, maxx, ROOM_STEP)
+    ys = np.arange(miny + ROOM_STEP / 2, maxy, ROOM_STEP)
+    gx, gy = np.meshgrid(xs, ys)
+    inside = shapely.contains_xy(geometry, gx.ravel(), gy.ravel())
+    placed = []
+    for x, y in zip(gx.ravel()[inside], gy.ravel()[inside]):
+        if any((x - t.x) ** 2 + (y - t.y) ** 2 < EXISTING_CLEARANCE ** 2 for t in near):
+            continue
+        if any((x - px) ** 2 + (y - py) ** 2 < TREE_SPACING ** 2 for px, py in placed):
+            continue
+        placed.append((x, y))
+    return {'existing_trees': existing, 'tree_capacity': len(placed)}
 
 
 def _patches(sections, buildings, around, trees, playgrounds):
@@ -331,7 +366,7 @@ def _patches(sections, buildings, around, trees, playgrounds):
             'existing_trees': len(tree_index.query(geometry, predicate='contains')) if tree_index is not None else 0,
             'near_playground': any(geometry.distance(g) <= PLAYGROUND_DISTANCE for g in playgrounds),
             'small': area < MIN_STRUCTURE_M2,
-            'zones': _zones(parts, buildings, around),
+            'zones': _zones(parts, buildings, around, tree_index),
         })
     return patches
 
@@ -429,7 +464,12 @@ def prompt(structure, plants):
         for zone in patch['zones']:
             allowed = ', '.join(PLANTING_NAMES[a] for a in zone['allowed']) or f"ничего — {zone['empty_reason']}"
             tags = '; '.join(f"{titles.get(t, t)} ({round(zone['tag_share'][t] * 100)}%)" for t in zone['tags'])
-            lines.append(f"{zone['id']}: {zone['area_m2']} м², можно: {allowed}" + (f"; условия: {tags}" if tags else ''))
+            trees = ''
+            if 'tree' in zone['allowed']:
+                building = f", до здания {zone['building_m']:g} м" if zone.get('building_m') is not None else ''
+                room = f"место под новые есть (~{zone['tree_capacity']})" if zone['tree_capacity'] else 'места под новые нет'
+                trees = (f"; деревья: {room}, уже стоит {zone['existing_trees']}{building}")
+            lines.append(f"{zone['id']}: {zone['area_m2']} м², можно: {allowed}" + trees + (f"; условия: {tags}" if tags else ''))
             lines.append(f"  место: {zone['place']}; граница: {_sides_text(zone)}")
             if zone['rules'] and zone['allowed']:
                 lines.append('  нормы: ' + _rules_text(zone['rules']))
@@ -540,12 +580,70 @@ def _check(answer, structure, plants):
         lines = []
         if not reason:
             lines, reason = justify.norms(plant, zone, structure)
+            # широкая крона у здания — не повод оставить зону без дерева: компактное дерево той же роли
+            if reason and reason.startswith('широкая крона'):
+                substitute = _compact_tree(zone, structure, plants, answer)
+                if substitute is not None:
+                    rejected.append({**item, 'rejected': reason, 'replaced_by': substitute['name']})
+                    item = {**item, 'plant_id': substitute['id'], 'substituted_from': plant['name'],
+                            'reason': f"{item.get('reason', '')} Заменено на {substitute['name']}: у {plant['name'].lower()} "
+                                      f"широкая крона, а до здания меньше 10 м.".strip()}
+                    plant = substitute
+                    lines, reason = justify.norms(plant, zone, structure)
         if reason:
             rejected.append({**item, 'rejected': reason})
         else:
+            item = {k: v for k, v in item.items() if k != 'quantity'}
+            item['unit'] = 'м2' if plant['group'] in GROUPS['herbaceous'] else 'шт'
             kept.append({**item, 'name': plant['name'], 'group': plant['group'], 'norms': lines,
                          'facts': justify.facts(plant), 'warnings': justify.warnings(item.get('reason', ''), plant)})
     return kept, rejected
+
+
+def _compact_tree(zone, structure, plants, answer=None):
+    """Дерево без широкой кроны, подходящее зоне: сначала из выбранных LLM для этой структуры, потом по правилам."""
+    by_id = {p['id']: p for p in plants}
+    chosen = [by_id.get(i.get('plant_id')) for i in (answer or {}).get('plantings', [])]
+    candidates = [p for p in chosen if p and p['group'] in GROUPS['tree'] and 'шк' not in p['flags']]
+    candidates += sorted((p for p in plants if p['group'] in GROUPS['tree'] and 'шк' not in p['flags']),
+                         key=lambda p: (-rules._score(p, 'roadside' in zone['tags'], bool(set(zone['tags']) & set(rules.SHADE_TAGS))), p['id']))
+    return next((p for p in candidates if rules._fits(p, zone, structure['territory'])), None)
+
+
+def _backfill_trees(structure, kept, plants, explained):
+    """Деревья — основной ярус: зона, где деревья разрешены и есть место под новые, а LLM дерево не выбрала,
+    получает дерево правилами — вид из палитры структуры, иначе компактный по правилам. Количество
+    считает рассадка. Возвращает добавленные посадки."""
+    by_id = {p['id']: p for p in plants}
+    trees = [i for i in kept if i.get('group') in GROUPS['tree'] and i.get('plant_id') in by_id]
+    with_trees = {i['zone'] for i in trees}
+    palette = [by_id[i['plant_id']] for i in trees]
+    added = []
+    for patch in structure['patches']:
+        if patch['small']:
+            continue
+        for zone in patch['zones']:
+            if 'tree' not in zone['allowed'] or zone.get('tree_capacity', 0) < 1 or zone['id'] in with_trees:
+                continue
+            plant = next((p for p in palette if 'шк' not in p['flags'] and rules._fits(p, zone, structure['territory'])),
+                         None) or _compact_tree(zone, structure, plants)
+            if plant is None:
+                continue
+            lines, reason = justify.norms(plant, zone, structure)
+            if reason:
+                continue
+            source = 'вид, уже выбранный для этой структуры' if plant in palette else 'компактный вид, подходящий условиям места'
+            added.append({'zone': zone['id'], 'plant_id': plant['id'],
+                          'role': 'группа' if zone['tree_capacity'] >= 3 else 'солитер', 'unit': 'шт', 'by': 'rules',
+                          'name': plant['name'], 'group': plant['group'],
+                          'reason': f"Дерево добавлено правилами: в зоне можно сажать деревья и есть место под новые "
+                                    f"(уже стоит {zone['existing_trees']}), а деревья — основной ярус озеленения; "
+                                    f"{plant['name']} — {source}.",
+                          'norms': lines, 'facts': justify.facts(plant), 'warnings': []})
+            note = f" Дополнительно: {plant['name'].lower()} (дерево добавлено правилами, в зоне есть место)."
+            if zone['id'] in explained:
+                explained[zone['id']] = {**explained[zone['id']], 'decision': explained[zone['id']]['decision'] + note}
+    return added
 
 
 def _explain(answer, structure):
@@ -572,8 +670,7 @@ def _lawn(zones, structure, plants):
         reason = (f"{note[0].upper() + note[1:]}: сплошной газон"
                   + (' теневыносливый — место в тени здания или крон' if shade else '') + '.')
         lines, _ = justify.norms(plant, zone, structure)
-        plantings.append({'zone': zone['id'], 'plant_id': plant['id'], 'role': 'газон', 'quantity': zone['area_m2'],
-                          'unit': 'м2', 'reason': reason, 'name': plant['name'], 'group': plant['group'],
+        plantings.append({'zone': zone['id'], 'plant_id': plant['id'], 'role': 'газон', 'unit': 'м2', 'reason': reason, 'name': plant['name'], 'group': plant['group'],
                           'norms': lines, 'facts': justify.facts(plant), 'warnings': [], 'by': 'code'})
         explained[zone['id']] = {'place': zone['place'], 'decision': f"Газон: {note}.", 'by': 'code'}
     return plantings, explained
@@ -583,7 +680,7 @@ STRUCTURE_FIELDS = ('id', 'type', 'name', 'place', 'sides', 'objects', 'composit
                     'size_m', 'mean_width_m', 'existing_trees', 'near_playground', 'playground_share')
 PATCH_FIELDS = ('id', 'area_m2', 'place', 'sides', 'objects', 'existing_trees', 'mean_width_m', 'small', 'zone_ids')
 ZONE_FIELDS = ('id', 'patch', 'allowed', 'area_m2', 'surface', 'place', 'sides', 'objects', 'parts', 'tags', 'rules',
-               'blocked_by', 'near_ground', 'building_m', 'sections', 'empty_reason')
+               'blocked_by', 'near_ground', 'building_m', 'existing_trees', 'tree_capacity', 'sections', 'empty_reason')
 
 
 def record_of(structure):
@@ -635,7 +732,7 @@ def _merge(answer, extra):
     return merged
 
 
-def recommend(geojson, llm, limit=None, workers=4, log=print, progress=None):
+def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
     """progress(готово, всего) — после каждой структуры, отправленной в LLM.
 
     llm=None — подбор правилами (rules.py) для всех структур; если LLM не ответила по структуре,
@@ -676,12 +773,19 @@ def recommend(geojson, llm, limit=None, workers=4, log=print, progress=None):
     answers = {}
     if progress:
         progress(0, len(asked))
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
         for done, future in enumerate(as_completed([pool.submit(run, s) for s in asked]), 1):
             structure, answer, error = future.result()
             answers[structure['id']] = (answer, error)
             if progress:
                 progress(done, len(asked))
+    except BaseException:
+        # progress может прервать подбор (задачу бросили): ещё не начатые структуры не запускаются,
+        # уже отправленные запросы дорабатывают в фоне (их ответы попадут в кэш)
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown()
 
     output, usage = [], Counter()
     for structure in found:
@@ -699,6 +803,7 @@ def recommend(geojson, llm, limit=None, workers=4, log=print, progress=None):
             usage.update({k: v for k, v in answer.pop('_usage', {}).items() if isinstance(v, int)})
             kept, rejected = _check(answer, structure, plants)
             explained.update(_explain(answer, structure))
+            kept += _backfill_trees(structure, kept, plants, explained)
             plantings = kept + plantings
             # rules — подбор правилами: LLM не передана или не ответила (тогда причина в llm_error)
             record.update(status='rules' if llm is None or error else 'ok',
@@ -716,7 +821,8 @@ def recommend(geojson, llm, limit=None, workers=4, log=print, progress=None):
             record['unexplained_zones'] = missing
         output.append(record)
     zones = [z for r in output for z in r['zones']]
-    return {'model': llm.model if llm is not None else 'rules', 'structures': output,
+    # название модели в результат не пишется (решение пользователя): прокси подставляет разные модели
+    return {'source': 'llm' if llm is not None else 'rules', 'structures': output,
             'summary': {'structures': len(found), 'asked': len(asked),
                         'ok': sum(r.get('status') == 'ok' for r in output),
                         'rules': sum(r.get('status') == 'rules' for r in output),
@@ -733,7 +839,7 @@ def main():
     parser.add_argument('--out', help='куда записать JSON (по умолчанию рядом с разметкой)')
     parser.add_argument('--model', help=f'модель (по умолчанию LLM_MODEL из .env или {DEFAULT_MODEL})')
     parser.add_argument('--limit', type=int, help='запросить только N крупнейших структур')
-    parser.add_argument('--workers', type=int, default=4)
+    parser.add_argument('--workers', type=int, default=5)
     parser.add_argument('--rules', action='store_true', help='без LLM: подбор правилами (rules.py)')
     args = parser.parse_args()
 

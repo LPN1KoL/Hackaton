@@ -49,7 +49,7 @@ def make_llm(cache_dir=None, use_llm=True):
     return recommend.LLM(env, cache_dir=cache_dir)
 
 
-def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers=4, limit=None, seed=0, use_llm=True):
+def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers=5, limit=None, seed=0, use_llm=True):
     """Возвращает сводку; progress(этап, готово=None, всего=None) сообщает, что сейчас делается."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -72,6 +72,8 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
     problems = place.verify(placement, geojson)
     placement['metadata']['summary']['violations'] = len(problems)
     _write(out / 'placement.geojson', placement)
+    # количество растений определяет рассадка — в план оно попадает после неё
+    _write(out / 'plan.json', place.apply_counts(plan, placement))
 
     report('dxf')
     place.write_dxf(placement, out / 'result.dxf', base=plan_path)
@@ -88,11 +90,9 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
         'zones_explained': plan['summary']['zones_explained'],
         'llm_errors': sum('llm_error' in s for s in plan['structures']),
         'by_rules': plan['summary']['rules'],
-        'model': plan['model'],
         'tokens': plan['summary']['usage'].get('total_tokens', 0),
         'cached_requests': plan['summary']['usage'].get('cached_requests', 0),
         'plants': placement['metadata']['summary']['totals'],
-        'short': placement['metadata']['summary']['short'],
         'violations': len(problems),
     }
     _write(out / 'summary.json', summary)
