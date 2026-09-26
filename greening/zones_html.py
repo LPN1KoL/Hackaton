@@ -30,6 +30,8 @@ ZONE_KINDS = {
 # сколько норм запретили деревья в секции → ступень цвета в режиме «Почему нет деревьев»
 BAN_STEPS = ((1, '1 норма'), (2, '2 нормы'), (3, '3–4 нормы'), (5, '5 и больше'))
 PLANTING_WORDS = {'tree': 'деревья', 'shrub': 'кустарники'}
+# радиус точки посадочного места куста в группе на карте, м
+GROUP_SPOT = 0.25
 
 
 def _path(geometry):
@@ -90,6 +92,7 @@ def build(geojson, plan=None, placement=None):
         'plants': [],
         'beds': [],
         'lawns': [],
+        'groups': [],
     }
     refs = {}
     for g, p in features:
@@ -154,12 +157,18 @@ def build(geojson, plan=None, placement=None):
         p = f['properties']
         g = shape(f['geometry'])
         sid, number = refs.get((p['structure'], p['zone'], p.get('plant_id'), p.get('role')), (p['structure'], -1))
-        if number >= 0:
+        if number >= 0 and p['layer'] != 'group':
             item = by_id[sid]['plantings'][number]
             item['placed'] = round(item['placed'] + (1 if p['layer'] == 'plant' else p.get('area_m2', 0)), 1)
         if p['layer'] == 'plant':
-            data['plants'].append([round(g.x, 2), round(-g.y, 2), round(p['crown_m'] / 2, 2), p['kind'],
+            # куст в группе или изгороди — точка посадочного места: крону показывает контур группы
+            in_group = p['kind'] == 'shrub' and (p.get('group_size', 1) > 1 or p.get('role') in ('живая изгородь', 'рядовая посадка'))
+            radius = GROUP_SPOT if in_group else round(p['crown_m'] / 2, 2)
+            data['plants'].append([round(g.x, 2), round(-g.y, 2), radius, p['kind'],
                                    f"{p['name']} ({p['role']}), {p['structure']}/{p['zone']}", sid, number])
+        elif p['layer'] == 'group':
+            data['groups'].append({'d': _path(g), 't': f"{p['label']} — {p['role']}", 's': sid, 'i': number,
+                                   'label': p['label'], 'at': _labels(g, 0)[:1]})
         else:
             data['beds' if p['layer'] == 'bed' else 'lawns'].append(
                 {'d': _path(g), 't': f"{p['name']}: {p['area_m2']} м²", 's': sid, 'i': number})

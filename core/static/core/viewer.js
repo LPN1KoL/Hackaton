@@ -4,6 +4,8 @@
     'use strict';
 
     const NS = 'http://www.w3.org/2000/svg';
+    // метров на пиксель, дальше которых подписи групп кустов скрываются
+    const GROUP_LABEL_PX = 0.08;
     const root = document.getElementById('viewer');
     if (!root) return;
 
@@ -34,6 +36,7 @@
         { id: 'existing', title: 'Существующие деревья', swatch: 'var(--v-tree)', on: true, ring: true },
         { id: 'shrubs', title: 'Новые кустарники', swatch: 'var(--p-shrub)', on: true, dot: true },
         { id: 'trees', title: 'Новые деревья', swatch: 'var(--p-tree)', on: true, dot: true },
+        { id: 'labels_groups', title: 'Подписи групп кустов', swatch: 'var(--p-shrub)', on: true, text: true },
         { id: 'labels', title: 'Подписи зон и газонов', swatch: 'var(--text)', on: true, text: true },
     ];
 
@@ -42,6 +45,8 @@
     let groups = {};
     let current = null;
     let labels = [];
+    // подписи групп кустов живут всё время просмотра, подписи зон — только у выбранной структуры
+    let groupLabels = [];
     const byId = {};
 
     function el(tag, attrs, parent) {
@@ -73,8 +78,10 @@
 
     function scaleLabels() {
         const px = pixel();
-        labels.forEach(function (t) {
-            const size = t.classList.contains('is-patch') ? 15 : 12;
+        // подписи групп — только вблизи: издалека они длиннее самих групп и налезают друг на друга
+        svg.classList.toggle('is-far', px > GROUP_LABEL_PX);
+        labels.concat(groupLabels).forEach(function (t) {
+            const size = t.classList.contains('is-patch') ? 15 : t.classList.contains('v-group-label') ? 10 : 12;
             t.setAttribute('font-size', size * px);
             t.setAttribute('stroke-width', 3 * px);
         });
@@ -90,6 +97,7 @@
     function draw() {
         svg.replaceChildren();
         groups = {};
+        groupLabels = [];
         LAYERS.forEach(function (layer) { groups[layer.id] = el('g', { 'data-layer': layer.id }); });
 
         D.surfaces.forEach(function (s) {
@@ -139,6 +147,19 @@
         if (D.rows) el('path', { d: D.rows, 'class': 'v-rows' }, groups.existing);
         D.trees.forEach(function (t) {
             el('circle', { cx: t[0], cy: t[1], r: 0.6, 'class': 'v-existing' }, groups.existing);
+        });
+
+        // группы и изгороди кустов — один контур с подписью «вид ×N»; внутри — точки посадочных мест
+        (D.groups || []).forEach(function (g) {
+            const p = el('path', { d: g.d, 'class': 'v-group', 'fill-rule': 'evenodd' }, groups.shrubs);
+            p.dataset.s = g.s; p.dataset.i = g.i;
+            title(p, g.t);
+        });
+        (D.groups || []).forEach(function (g) {
+            if (!g.at || !g.at.length) return;
+            const t = el('text', { x: g.at[0][0], y: g.at[0][1], 'class': 'v-label v-group-label' }, groups.labels_groups);
+            t.textContent = g.label;
+            groupLabels.push(t);
         });
 
         D.plants.forEach(function (p) {

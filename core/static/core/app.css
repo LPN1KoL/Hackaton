@@ -887,3 +887,7 @@ body.has-viewer { overflow: hidden; }
     .viewer-side { border-right: 0; border-bottom: 1px solid var(--line); }
     .viewer-actions .viewer-button[data-link] { display: none; }
 }
+.v-group { fill: var(--p-shrub); fill-opacity: 0.35; stroke: #2d5a1e; stroke-width: 1.2; vector-effect: non-scaling-stroke; cursor: pointer; }
+.v-group.is-hl { stroke: var(--v-accent); stroke-width: 2.5; fill-opacity: 0.6; }
+.v-group-label { fill: #1f4d12; font-weight: 500; }
+.is-far .v-group-label { display: none; }
