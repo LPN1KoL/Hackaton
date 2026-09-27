@@ -10,13 +10,15 @@
 CLASS_MIN_REQUESTS запросов, по структурам спрашиваются только крупные (больше SEPARATE_ZONES зон), остальные — по типу (все полосы вдоль улиц, все дворы…): их зоны сводятся
 в классы мест (разрешённые посадки + условия, от которых зависит выбор вида), LLM решает каждый класс
 один раз, код раскладывает решение по зонам, чередуя взаимозаменяемые виды по структурам. Доступ —
-OpenAI-совместимый API из .env (BASE_URL, API_KEY, необязательно LLM_MODEL).
+OpenAI-совместимый API из .env (BASE_URL, API_KEY, необязательно LLM_MODEL);
+если основная модель не ответила — вспомогательная (SUB_BASE_URL, SUB_API_KEY, SUB_MODEL).
 """
 
 import argparse
 import hashlib
 import math
 import json
+import logging
 import os
 import re
 import sys
@@ -35,6 +37,8 @@ from shapely.geometry import shape
 from shapely.ops import unary_union
 
 from . import blocks, catalog, justify, place, rules
+
+logger = logging.getLogger(__name__)
 
 # укладывается в ограничение цены аккаунта прокси (≤100 ₽ за 1 млн токенов); Sonnet туда не проходит
 DEFAULT_MODEL = 'google/gemini-3.1-pro-preview'
@@ -140,6 +144,9 @@ SYSTEM_TYPE = """Ты ландшафтный архитектор, проект�
 {"classes":[{"class":"c1","plantings":[{"plant_ids":["Д032","Д011"],"role":"солитер|группа|рядовая посадка|живая изгородь|куртина|цветник|газон","reason":"почему этот приём и эти виды здесь"}],"place":"что это за места","decision":"что здесь и почему, 1–3 предложения"}],"justification":"замысел для всех структур этого типа, 4–6 предложений"}"""
 
 
+ENV_KEYS = ('BASE_URL', 'API_KEY', 'LLM_MODEL', 'SUB_BASE_URL', 'SUB_API_KEY', 'SUB_MODEL')
+
+
 def load_env(path=ENV):
     env = {}
     if Path(path).exists():
@@ -147,7 +154,7 @@ def load_env(path=ENV):
             if '=' in line and not line.lstrip().startswith('#'):
                 key, value = line.split('=', 1)
                 env[key.strip()] = value.strip().strip('"').strip("'")
-    env.update({k: v for k, v in os.environ.items() if k in ('BASE_URL', 'API_KEY', 'LLM_MODEL')})
+    env.update({k: v for k, v in os.environ.items() if k in ENV_KEYS})
     return env
 
 
@@ -525,12 +532,20 @@ def _rules_text(rules):
 
 
 class LLM:
+    """Основная модель (BASE_URL, API_KEY, LLM_MODEL) и вспомогательная (SUB_BASE_URL, SUB_API_KEY,
+    SUB_MODEL): если основная не ответила, тот же запрос уходит вспомогательной."""
+
     def __init__(self, env, model=None, cache_dir=None):
-        if not env.get('BASE_URL') or not env.get('API_KEY'):
-            raise RuntimeError('В .env нет BASE_URL или API_KEY')
-        self.url = env['BASE_URL'].rstrip('/') + '/chat/completions'
-        self.key = env['API_KEY']
-        self.model = model or env.get('LLM_MODEL') or DEFAULT_MODEL
+        self.endpoints = []
+        if env.get('BASE_URL') and env.get('API_KEY'):
+            self.endpoints.append(_endpoint(env['BASE_URL'], env['API_KEY'],
+                                            model or env.get('LLM_MODEL') or DEFAULT_MODEL, 'main'))
+        if env.get('SUB_MODEL') and (env.get('SUB_BASE_URL') or env.get('BASE_URL'))                 and (env.get('SUB_API_KEY') or env.get('API_KEY')):
+            self.endpoints.append(_endpoint(env.get('SUB_BASE_URL') or env['BASE_URL'],
+                                            env.get('SUB_API_KEY') or env['API_KEY'], env['SUB_MODEL'], 'sub'))
+        if not self.endpoints:
+            raise RuntimeError('В .env нет BASE_URL и API_KEY (или SUB_BASE_URL, SUB_API_KEY, SUB_MODEL)')
+        self.model = self.endpoints[0]['model']
         self.cache = Path(cache_dir) if cache_dir else None
         if self.cache:
             self.cache.mkdir(parents=True, exist_ok=True)
@@ -542,29 +557,47 @@ class LLM:
         """JSON-ответ модели; одинаковые запросы берутся из кэша, чтобы не платить дважды."""
         with self._lock:
             self.requests += 1
-        key = hashlib.sha256(f'{self.model}\n{system}\n{text}'.encode()).hexdigest()[:24]
-        cached = self.cache / f'{key}.json' if self.cache else None
-        if cached and cached.exists():
-            # из кэша — без расхода токенов: в сводке считаются только настоящие запросы
-            answer = json.loads(cached.read_text(encoding='utf-8'))
-            answer['_usage'] = {'cached_requests': 1}
+        cache_files = []
+        for endpoint in self.endpoints:
+            key = hashlib.sha256(f"{endpoint['model']}\n{system}\n{text}".encode()).hexdigest()[:24]
+            cache_files.append(self.cache / f'{key}.json' if self.cache else None)
+        for cached in cache_files:
+            if cached and cached.exists():
+                # из кэша — без расхода токенов: в сводке считаются только настоящие запросы
+                answer = json.loads(cached.read_text(encoding='utf-8'))
+                answer['_usage'] = {'cached_requests': 1}
+                return answer
+        errors = []
+        for endpoint, cached in zip(self.endpoints, cache_files):
+            try:
+                answer = self._request(endpoint, text, system, retries)
+            except RuntimeError as exc:
+                errors.append(f"{endpoint['role']}: {exc}")
+                if len(self.endpoints) > 1 and endpoint['role'] == 'main':
+                    logger.warning('Основная модель не ответила (%s) — запрос уходит вспомогательной', exc)
+                continue
+            if cached:
+                cached.write_text(json.dumps(answer, ensure_ascii=False), encoding='utf-8')
+            if endpoint['role'] == 'sub':
+                answer['_usage']['fallback_requests'] = 1
             return answer
+        raise RuntimeError('LLM не ответила: ' + '; '.join(errors))
+
+    def _request(self, endpoint, text, system, retries):
         # json_object — модель не ломает JSON кавычками в тексте; max_tokens — длинный ответ не обрезается
-        body = {'model': self.model, 'temperature': 0.3, 'max_tokens': MAX_TOKENS,
+        body = {'model': endpoint['model'], 'temperature': 0.3, 'max_tokens': MAX_TOKENS,
                 'response_format': {'type': 'json_object'},
                 'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': text}]}
         last = None
         for attempt in range(retries):
             try:
-                request = urllib.request.Request(self.url, data=json.dumps(body).encode(), method='POST', headers={
-                    'Authorization': f'Bearer {self.key}', 'Content-Type': 'application/json'})
+                request = urllib.request.Request(endpoint['url'], data=json.dumps(body).encode(), method='POST', headers={
+                    'Authorization': f"Bearer {endpoint['key']}", 'Content-Type': 'application/json'})
                 with urllib.request.urlopen(request, timeout=300) as response:
                     reply = json.load(response)
                 content = reply['choices'][0]['message']['content']
                 answer = _parse(content)
-                answer['_usage'] = reply.get('usage', {})
-                if cached:
-                    cached.write_text(json.dumps(answer, ensure_ascii=False), encoding='utf-8')
+                answer['_usage'] = dict(reply.get('usage') or {})
                 return answer
             except urllib.error.HTTPError as exc:
                 # текст ошибки прокси объясняет причину (лимит цены, нет модели), без него 422 ничего не говорит
@@ -572,10 +605,14 @@ class LLM:
                 if exc.code in (400, 401, 403, 404, 422):
                     break
                 time.sleep(2 * (attempt + 1))
-            except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as exc:
+            except (urllib.error.URLError, TimeoutError, KeyError, ValueError, TypeError) as exc:
                 last = exc
                 time.sleep(2 * (attempt + 1))
-        raise RuntimeError(f'LLM не ответила: {last}')
+        raise RuntimeError(str(last))
+
+
+def _endpoint(url, key, model, role):
+    return {'url': url.rstrip('/') + '/chat/completions', 'key': key, 'model': model, 'role': role}
 
 
 def _parse(content):

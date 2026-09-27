@@ -43,10 +43,11 @@ def make_llm(cache_dir=None, use_llm=True):
     if not use_llm:
         return None
     env = recommend.load_env()
-    if not env.get('BASE_URL') or not env.get('API_KEY'):
-        logger.warning('В .env нет BASE_URL или API_KEY — подбор растений правилами, без LLM')
+    try:
+        return recommend.LLM(env, cache_dir=cache_dir)
+    except RuntimeError as exc:
+        logger.warning('%s — подбор растений правилами, без LLM', exc)
         return None
-    return recommend.LLM(env, cache_dir=cache_dir)
 
 
 def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers=5, limit=None, seed=0, use_llm=True):
@@ -92,6 +93,7 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
         'by_rules': plan['summary']['rules'],
         'tokens': plan['summary']['usage'].get('total_tokens', 0),
         'cached_requests': plan['summary']['usage'].get('cached_requests', 0),
+        'fallback_requests': plan['summary']['usage'].get('fallback_requests', 0),
         'plants': placement['metadata']['summary']['totals'],
         'violations': len(problems),
     }
