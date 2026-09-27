@@ -10,7 +10,7 @@
     plan.json         — подбор растений и обоснования по структурам и зонам
     placement.geojson — рассадка (точки растений, пятна цветников и газона) и сводка
     result.dxf        — исходный чертёж + слои рассадки Greening_*
-    view.json         — данные интерактивного превью (zones_html.build)
+    view.json         — данные интерактивного превью (view.build)
     summary.json      — итог для экрана результата
 """
 
@@ -20,7 +20,7 @@ import logging
 import sys
 from pathlib import Path
 
-from . import export, parse, place, recommend, zones_html
+from . import export, parse, place, recommend, view as view_data
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
     place.write_dxf(placement, out / 'result.dxf', base=plan_path)
 
     report('view')
-    view = zones_html.build(geojson, plan, placement)
+    view = view_data.build(geojson, plan, placement)
     _write(out / 'view.json', view)
 
     summary = {

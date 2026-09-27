@@ -1,5 +1,5 @@
 // Просмотр результата: слои с чекбоксами поверх друг друга и объяснения ко всем посадкам.
-// Данные — view.json задачи (greening/zones_html.build): поверхности, зоны, запреты, рассадка, структуры.
+// Данные — view.json задачи (greening/view.build): поверхности, зоны, рассадка, структуры.
 (function () {
     'use strict';
 
@@ -26,7 +26,6 @@
     const LAYERS = [
         { id: 'surfaces', title: 'Покрытия (подоснова)', swatch: 'var(--v-lawn)', on: true },
         { id: 'zones', title: 'Зоны: что можно сажать', swatch: 'var(--z-tree_shrub)', on: true },
-        { id: 'bans', title: 'Почему нет деревьев', swatch: 'var(--b-3)', on: false },
         { id: 'lawns', title: 'Газон (посев)', swatch: 'var(--p-lawn)', on: false },
         { id: 'beds', title: 'Цветники', swatch: 'var(--p-bed)', on: true },
         { id: 'territory', title: 'Граница работ', swatch: 'var(--muted)', on: true, line: true },
@@ -104,11 +103,6 @@
             el('path', { d: s.d, 'class': 'v-surf s-' + s.kind, 'fill-rule': 'evenodd' }, groups.surfaces);
         });
         el('path', { d: D.territory, 'class': 'v-territory', 'fill-rule': 'evenodd' }, groups.territory);
-
-        D.bans.forEach(function (b) {
-            const step = b.n >= 5 ? 5 : b.n >= 3 ? 3 : b.n;
-            title(el('path', { d: b.d, 'class': 'v-ban b-' + step, 'fill-rule': 'evenodd' }, groups.bans), b.t);
-        });
 
         D.structures.forEach(function (s) {
             byId[s.id] = s;

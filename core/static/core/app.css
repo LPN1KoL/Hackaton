@@ -650,11 +650,6 @@ h1 {
     --z-shrub: #8bbf4a;
     --z-herbaceous: #f1e58a;
     --z-none: #e0715f;
-    --b-0: #3f8f45;
-    --b-1: #f6d38b;
-    --b-2: #f0a35e;
-    --b-3: #dd6b3d;
-    --b-5: #a8322a;
     --p-tree: #1f6b2a;
     --p-shrub: #5e9e3f;
     --p-bed: #e58fc0;
@@ -854,12 +849,6 @@ body.has-viewer { overflow: hidden; }
 .z-shrub { fill: var(--z-shrub); background: var(--z-shrub); }
 .z-herbaceous { fill: var(--z-herbaceous); background: var(--z-herbaceous); }
 .z-none { fill: var(--z-none); background: var(--z-none); }
-.v-ban { stroke: #fff; stroke-opacity: 0.6; vector-effect: non-scaling-stroke; }
-.b-0 { fill: var(--b-0); }
-.b-1 { fill: var(--b-1); }
-.b-2 { fill: var(--b-2); }
-.b-3 { fill: var(--b-3); }
-.b-5 { fill: var(--b-5); }
 .v-structure { fill: none; stroke: var(--v-accent); stroke-opacity: 0.35; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; }
 .v-structure.is-on { stroke-opacity: 1; stroke-width: 2.5; }
 .v-patch { fill: none; stroke: #1a1a1a; stroke-opacity: 0.6; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
