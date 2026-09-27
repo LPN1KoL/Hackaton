@@ -6,8 +6,11 @@
 (blocks.py). Внутри неё газоны u1, u2… (связные зелёные участки из секций разметки, их разделяют
 дорожки и площадки), а в газонах — зоны по разрешённым посадкам. LLM получает структуру целиком:
 описание, газоны, зоны с нормами и отобранную часть справочника (config/plants.txt), — подбирает
-единый ассортимент на всю структуру и объясняет каждую зону. Доступ — OpenAI-совместимый API
-из .env (BASE_URL, API_KEY, необязательно LLM_MODEL).
+единый ассортимент на всю структуру и объясняет каждую зону. Если так вышло бы не меньше
+CLASS_MIN_REQUESTS запросов, по структурам спрашиваются только крупные (больше SEPARATE_ZONES зон), остальные — по типу (все полосы вдоль улиц, все дворы…): их зоны сводятся
+в классы мест (разрешённые посадки + условия, от которых зависит выбор вида), LLM решает каждый класс
+один раз, код раскладывает решение по зонам, чередуя взаимозаменяемые виды по структурам. Доступ —
+OpenAI-совместимый API из .env (BASE_URL, API_KEY, необязательно LLM_MODEL).
 """
 
 import argparse
@@ -17,6 +20,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -116,6 +120,24 @@ SYSTEM = """Ты ландшафтный архитектор, проектиру
 В тексте (reason, justification, zones) не используй коды справочника — ни id, ни буквы свойств и групп: только названия растений и обычные слова. Номера зон (z1…) в тексте тоже не упоминай.
 Ответ — только JSON, в "zones" по одной записи на каждую зону, в "justification" — замысел для структуры целиком:
 {"plantings":[{"zone":"z1","plant_id":"Д032","role":"солитер|группа|рядовая посадка|живая изгородь|куртина|цветник|газон","reason":"почему это растение здесь"}],"zones":[{"zone":"z1","place":"что это за место","decision":"что здесь и почему, 1–3 предложения"}],"justification":"обоснование решения по структуре целиком, 5–8 предложений"}"""
+
+SYSTEM_TYPE = """Ты ландшафтный архитектор, проектируешь озеленение Москвы по 743-ПП.
+Подбери единый ассортимент для всех небольших структур одного типа на участке — например, всех полос вдоль улиц или всех придомовых территорий. Их зоны сведены в классы мест: в классе — зоны с одинаковыми разрешёнными посадками и условиями, решение класса применяется ко всем его зонам. Правила:
+- только растения из справочника по id; в класс — только разрешённые в нём группы (деревья ДЛ/ДХ, кустарники КЛ/КХ/Л, травянистые М/О/Б/Г);
+- соблюдай свойства: дп не рядом с детскими и спорт. площадками; шк не ближе 10 м от жилых домов; г не у проезжей части; пл не рядом с плодовыми; учитывай свет (с/п/т) и условия класса;
+- «у проезжей части» — устойчивые к соли и газам; «под кронами существующих деревьев» — теневыносливые; «вдоль дорожки» — без колючих и не загораживающие проход;
+- в каждом классе с разрешёнными травянистыми предложи покрытие (газон или цветник);
+- деревья — основной ярус: в каждом классе, где разрешены деревья и есть место под новые, выбери дерево и приём (солитер, группа, рядовая посадка); тень от существующих деревьев не причина отказываться; кустарники — второй ярус;
+- в классы «ближе 10 м к зданию» — только компактные деревья без широкой кроны;
+- для каждого приёма дай 2–3 взаимозаменяемых вида в "plant_ids": алгоритм чередует их по структурам, чтобы территория не была однообразной; каждый вариант должен подходить всем условиям класса;
+- ассортимент общий на тип: одни и те же виды повторяются в разных классах, где подходят;
+- количество и расстановку считает алгоритм; нигде не называй количество растений и площади посадок;
+- ассортимент «о» (основной) предпочтительнее «д» и «п».
+Обоснование — убедительное и конкретное, для заказчика ДПиООС: социальная польза (кто пользуется местом, безопасность, тень, шум, пыль), экономика (стоимость, долговечность, приживаемость), обслуживание (уход, стрижка, полив, уборка листвы), экология и эстетика по сезонам. "reason" — о приёме и свойствах, общих для вариантов; если называешь растения, называй все варианты. Ссылайся только на нормы из описания, не выдумывай пункты.
+Объясни каждый класс: что это за места простыми словами и почему такое решение.
+В тексте не используй коды справочника — ни id, ни буквы свойств и групп — и номера классов (c1…).
+Ответ — только JSON, в "classes" по одной записи на каждый класс из описания:
+{"classes":[{"class":"c1","plantings":[{"plant_ids":["Д032","Д011"],"role":"солитер|группа|рядовая посадка|живая изгородь|куртина|цветник|газон","reason":"почему этот приём и эти виды здесь"}],"place":"что это за места","decision":"что здесь и почему, 1–3 предложения"}],"justification":"замысел для всех структур этого типа, 4–6 предложений"}"""
 
 
 def load_env(path=ENV):
@@ -512,10 +534,15 @@ class LLM:
         self.cache = Path(cache_dir) if cache_dir else None
         if self.cache:
             self.cache.mkdir(parents=True, exist_ok=True)
+        # запросов за прогон, вместе с ответами из кэша
+        self.requests = 0
+        self._lock = threading.Lock()
 
-    def ask(self, text, retries=3):
+    def ask(self, text, retries=3, system=SYSTEM):
         """JSON-ответ модели; одинаковые запросы берутся из кэша, чтобы не платить дважды."""
-        key = hashlib.sha256(f'{self.model}\n{SYSTEM}\n{text}'.encode()).hexdigest()[:24]
+        with self._lock:
+            self.requests += 1
+        key = hashlib.sha256(f'{self.model}\n{system}\n{text}'.encode()).hexdigest()[:24]
         cached = self.cache / f'{key}.json' if self.cache else None
         if cached and cached.exists():
             # из кэша — без расхода токенов: в сводке считаются только настоящие запросы
@@ -525,7 +552,7 @@ class LLM:
         # json_object — модель не ломает JSON кавычками в тексте; max_tokens — длинный ответ не обрезается
         body = {'model': self.model, 'temperature': 0.3, 'max_tokens': MAX_TOKENS,
                 'response_format': {'type': 'json_object'},
-                'messages': [{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': text}]}
+                'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': text}]}
         last = None
         for attempt in range(retries):
             try:
@@ -651,7 +678,8 @@ def _explain(answer, structure):
     explained = {}
     for item in answer.get('zones', []):
         if isinstance(item, dict) and item.get('zone') and item.get('decision'):
-            explained[item['zone']] = {'place': item.get('place', ''), 'decision': item['decision']}
+            explained[item['zone']] = {'place': item.get('place', ''), 'decision': item['decision'],
+                                       **{k: item[k] for k in ('by', 'class') if k in item}}
     return explained
 
 
@@ -732,6 +760,210 @@ def _merge(answer, extra):
     return merged
 
 
+# структура больше этого числа зон спрашивается отдельно (композиция продумывается целиком);
+# меньшие — через классы мест, один запрос на тип структуры
+SEPARATE_ZONES = 30
+# классы мест включаются, только если по структурам вышло бы не меньше стольких запросов:
+# на небольшом участке запрос на каждую структуру дешёв, а объяснения по зонам — точнее
+CLASS_MIN_REQUESTS = 15
+# цветник в режиме классов — только в зоне не меньше этого (как MIN_ZONE['bed'] в rules.py), м²
+BED_MIN_M2 = rules.MIN_ZONE['bed']
+# классов в одном ответе: длиннее ответ ломается, как и по зонам
+CLASSES_PER_REQUEST = 40
+# условия места, от которых зависит выбор вида; люки, заборы, сети уже учтены нормами разметки
+# (площадки — отдельным признаком near_ground: запрет «дп» действует при любой доле площади у площадки)
+CLASS_TAGS = ('roadside', 'existing_trees', 'near_building', 'under_power_line', 'along_path', 'slope')
+NEAR_GROUND = 'рядом детская или спортивная площадка (без ядовитых и колючих)'
+FIRST_CLASSES = """
+
+Классов много, поэтому ответ по частям. Сейчас верни решения только для классов: {classes};
+остальные запрошу следующими сообщениями. "justification" — замысел для всего типа."""
+FOLLOW_CLASSES = """
+
+Продолжение: ещё не решены классы {classes}. Верни JSON в том же формате только для них; "justification" — пустая строка.{chosen}"""
+CHOSEN_TYPE = """
+Для этого типа уже выбраны: {names}. Держись этого ассортимента — у всех структур типа должен быть единый стиль."""
+
+
+def _class_key(zone):
+    """Что определяет выбор вида: разрешённые посадки, значимые условия, место под деревья, близость здания."""
+    tree = 'tree' in zone['allowed']
+    near = zone.get('building_m') is not None and zone['building_m'] < justify.WIDE_CROWN_M
+    return (tuple(sorted(zone['allowed'])), tuple(t for t in CLASS_TAGS if t in zone['tags']),
+            tree and bool(zone.get('tree_capacity')), tree and near, zone['near_ground'])
+
+
+def _classes(members):
+    """Классы мест по структурам одного типа: [{'id': 'c1', 'key', 'zones': [(структура, зона)]}], крупные сначала.
+    Зоны, где ничего нельзя, в классы не входят — их объясняет код по нормам."""
+    found = defaultdict(list)
+    for structure in members:
+        for patch in structure['patches']:
+            if patch['small']:
+                continue
+            for zone in patch['zones']:
+                if zone['allowed']:
+                    found[_class_key(zone)].append((structure, zone))
+    ordered = sorted(found.items(), key=lambda kv: -sum(z['area_m2'] for _, z in kv[1]))
+    return [{'id': f'c{n}', 'key': key, 'zones': zones} for n, (key, zones) in enumerate(ordered, 1)]
+
+
+def _generic_place(text):
+    """Место без размеров и соседних объектов — чтобы одинаковые места считались вместе."""
+    text = text.split(';')[0]
+    return re.sub(r' шириной ~[\d.]+ м', '', text)
+
+
+def type_prompt(kind, members, classes, plants):
+    """Запрос по типу: сводка по структурам типа, классы мест и справочник один раз."""
+    titles = members[0]['tag_titles']
+    places = Counter(_generic_place(s['place']) for s in members)
+    lines = [f"Тип территории: {TYPES[kind][0]}. Структур {len(members)}, газоны всего "
+             f"{round(sum(s['area_m2'] for s in members), 1)} м², существующих деревьев "
+             f"{sum(s['existing_trees'] for s in members)} (сохраняются).",
+             'Где находятся: ' + '; '.join(f'{p} ×{n}' for p, n in places.most_common(5)) + '.']
+    groups = set()
+    for cls in classes:
+        allowed, tags, room, near, ground = cls['key']
+        zones = [z for _, z in cls['zones']]
+        areas = [z['area_m2'] for z in zones]
+        structures_in = len({s['id'] for s, _ in cls['zones']})
+        head = (f"\n{cls['id']}: зон {len(zones)} в {structures_in} структурах, {round(sum(areas), 1)} м² "
+                f"(от {min(areas):g} до {max(areas):g} м²); можно: " + ', '.join(PLANTING_NAMES[a] for a in allowed))
+        if 'tree' in allowed:
+            head += '; деревья: ' + ('место под новые есть' if room else 'места под новые нет')
+            head += ', ближе 10 м к зданию — только компактные' if near else ''
+        conditions = [titles.get(t, t) for t in tags] + ([NEAR_GROUND] if ground else [])
+        if conditions:
+            head += '; условия: ' + ', '.join(conditions)
+        lines.append(head)
+        typical = Counter(_generic_place(z['place']) for z in zones)
+        lines.append('  места: ' + '; '.join(f'{p} ×{n}' for p, n in typical.most_common(3)))
+        norms = Counter(_rules_text(z['rules']) for z in zones if z['rules'])
+        if norms:
+            lines.append('  нормы (чаще всего): ' + norms.most_common(1)[0][0])
+        for planting in allowed:
+            groups.update(GROUPS[planting])
+    rows = catalog.select(plants, groups, TYPES[kind][1])
+    text = '\n'.join(lines)
+    return text + '\n\n' + catalog.header() + '\n' + '\n'.join(rows) if rows else text
+
+
+def _class_answers(answer):
+    """{id класса: запись ответа} — только классы с решением."""
+    return {item['class']: item for item in answer.get('classes', [])
+            if isinstance(item, dict) and item.get('class') and item.get('decision')}
+
+
+def _merge_type(answer, extra):
+    merged = {'classes': answer.get('classes', []) + extra.get('classes', []),
+              'justification': answer.get('justification') or extra.get('justification', '')}
+    usage = Counter({k: v for k, v in answer.get('_usage', {}).items() if isinstance(v, int)})
+    usage.update({k: v for k, v in extra.get('_usage', {}).items() if isinstance(v, int)})
+    merged['_usage'] = dict(usage)
+    return merged
+
+
+def _chosen_type(answer):
+    names = []
+    for item in answer.get('classes', []):
+        for planting in item.get('plantings', []) if isinstance(item, dict) else []:
+            for name in planting.get('plant_ids') or []:
+                if name not in names:
+                    names.append(name)
+    return CHOSEN_TYPE.format(names=', '.join(names)) if names else ''
+
+
+def ask_type(llm, kind, members, classes, plants, log=print):
+    """Решения по классам мест одного типа; крупный тип — частями, пропущенные классы — дозапросом."""
+    text = type_prompt(kind, members, classes, plants)
+    wanted = [c['id'] for c in classes]
+    answer = {}
+    for attempt in range(math.ceil(len(wanted) / CLASSES_PER_REQUEST) + FOLLOW_UPS):
+        missing = [c for c in wanted if c not in _class_answers(answer)]
+        if not missing:
+            break
+        batch = missing[:CLASSES_PER_REQUEST]
+        if not attempt:
+            suffix = '' if len(wanted) <= CLASSES_PER_REQUEST else FIRST_CLASSES.format(classes=', '.join(batch))
+        else:
+            log(f"{TYPES[kind][0]}: дозапрос по {len(batch)} классам из {len(missing)}")
+            suffix = FOLLOW_CLASSES.format(classes=', '.join(batch), chosen=_chosen_type(answer))
+        answer = _merge_type(answer, llm.ask(text + suffix, system=SYSTEM_TYPE))
+    return answer
+
+
+def _one_bed(plantings, zones, structure, by_id):
+    """Цветник класса — один на структуру, в самой крупной зоне не меньше BED_MIN_M2: решение класса
+    ложится на все его зоны, и иначе цветником стала бы каждая полоска газона (дорогой уход).
+    В остальных зонах вместо цветника — газон, причина дописывается в объяснение зоны."""
+    area = {z['id']: z for p in structure['patches'] for z in p['zones']}
+    beds = [p for p in plantings if p['role'] == 'цветник']
+    fit = [p for p in beds if area[p['zone']]['area_m2'] >= BED_MIN_M2]
+    keep = max(fit, key=lambda p: area[p['zone']]['area_m2'])['zone'] if fit else None
+    explained = {z['zone']: z for z in zones}
+    for bed in beds:
+        if bed['zone'] == keep:
+            continue
+        plantings.remove(bed)
+        zone = area[bed['zone']]
+        if not any(p['zone'] == zone['id'] and p['role'] == 'газон' for p in plantings):
+            lawn = by_id[SHADE_LAWN if set(zone['tags']) & set(SHADE_TAGS) else LAWN]
+            plantings.append({'zone': zone['id'], 'plant_id': lawn['id'], 'role': 'газон', 'class': bed['class'],
+                              'reason': 'Газон вместо цветника: цветник в структуре один, на самом крупном участке.'})
+        why = (f'зона меньше {BED_MIN_M2:g} м²' if zone['area_m2'] < BED_MIN_M2
+               else 'цветник в структуре один — на самом крупном подходящем участке')
+        note = explained.get(zone['id'])
+        if note and 'цветник' not in note.get('bed_note', ''):
+            note['decision'] += f' Цветник здесь не устраивается ({why}) — газон.'
+            note['bed_note'] = 'цветник'
+    for note in zones:
+        note.pop('bed_note', None)
+
+
+def _from_classes(structure, index, classes, answer, plants):
+    """Ответ по одной структуре из решений классов — в формате SYSTEM, чтобы дальше работали те же проверки.
+    index — номер структуры в типе: с него начинается чередование взаимозаменяемых видов."""
+    by_id = {p['id']: p for p in plants}
+    decided = _class_answers(answer)
+    owner = {id(z): c['id'] for c in classes for _, z in c['zones']}
+    plantings, zones = [], []
+    for patch in structure['patches']:
+        if patch['small']:
+            continue
+        for zone in patch['zones']:
+            if not zone['allowed']:
+                zones.append({'zone': zone['id'], 'place': zone['place'], 'by': 'code',
+                              'decision': f"Без посадок: {zone['empty_reason']}."})
+                continue
+            cls = owner[id(zone)]
+            item = decided.get(cls)
+            if item is None:
+                continue
+            for planting in item.get('plantings', []):
+                if not isinstance(planting, dict):
+                    continue
+                variants = planting.get('plant_ids') or [planting.get('plant_id')]
+                known = [v for v in variants if v in by_id]
+                if known:
+                    shift = index % len(known)
+                    order = known[shift:] + known[:shift]
+                    fits = [v for v in order if rules._fits(by_id[v], zone, structure['territory'])
+                            and not (zone['near_ground'] and 'дп' in by_id[v]['flags'])]
+                    pick = fits[0] if fits else order[0]
+                else:
+                    pick = variants[0]  # отбросит _check: «нет в справочнике»
+                plantings.append({'zone': zone['id'], 'plant_id': pick, 'role': planting.get('role', ''),
+                                  'reason': planting.get('reason', ''), 'class': cls})
+            zones.append({'zone': zone['id'], 'place': zone['place'], 'decision': item['decision'],
+                          'by': 'class', 'class': cls})
+    _one_bed(plantings, zones, structure, by_id)
+    common = answer.get('justification', '')
+    note = (f"Структура решена по общему ассортименту для всех структур типа «{structure['name']}» на участке: "
+            f"зоны с одинаковыми условиями получают одно решение, виды чередуются между структурами.")
+    return {'plantings': plantings, 'zones': zones, 'justification': f'{common} {note}'.strip()}
+
+
 def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
     """progress(готово, всего) — после каждой структуры, отправленной в LLM.
 
@@ -748,7 +980,7 @@ def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
 
     def run(structure):
         if llm is None:
-            return structure, rules.answer(structure, plants), None
+            return [(structure, rules.answer(structure, plants), None)]
         text = prompt(structure, plants)
         wanted = _missing({}, structure)
         try:
@@ -766,18 +998,52 @@ def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
                 answer = _merge(answer, extra)
         except RuntimeError as exc:
             log(f"{structure['id']}: {exc} — подбор правилами")
-            return structure, rules.answer(structure, plants), str(exc)
+            return [(structure, rules.answer(structure, plants), str(exc))]
         log(f"{structure['id']} ({structure['name']}, {structure['area_m2']} м²): готово")
-        return structure, answer, None
+        return [(structure, answer, None)]
+
+    def run_type(kind, members):
+        classes = _classes(members)
+        try:
+            answer = ask_type(llm, kind, members, classes, plants, log)
+        except RuntimeError as exc:
+            log(f"{TYPES[kind][0]}: {exc} — подбор правилами")
+            return [(s, rules.answer(s, plants), str(exc)) for s in members]
+        log(f"{TYPES[kind][0]} ({len(members)} структур, {len(classes)} классов мест): готово")
+        usage = answer.pop('_usage', {})
+        results = [(s, _from_classes(s, n, classes, answer, plants), None) for n, s in enumerate(members)]
+        # расход токенов — один раз на тип, а не на каждую структуру
+        if results:
+            results[0][1]['_usage'] = usage
+        return results
+
+    # без LLM, на небольшом участке и крупные структуры — по одной; остальные — один запрос на тип
+    per_structure = sum(max(1, math.ceil(len(_missing({}, s)) / ZONES_PER_REQUEST)) for s in asked)
+    by_classes = llm is not None and per_structure >= CLASS_MIN_REQUESTS
+    separate = [s for s in asked if not by_classes or len(_missing({}, s)) > SEPARATE_ZONES]
+    log(f"структур для подбора {len(asked)}, по структурам вышло бы запросов {per_structure}: "
+        + ('крупные — по структурам, остальные — по классам мест' if by_classes else 'все по структурам'))
+    alone = {s['id'] for s in separate}
+    by_type = defaultdict(list)
+    for structure in asked:
+        if structure['id'] not in alone:
+            by_type[structure['type']].append(structure)
+    scope = {s['id']: 'structure' for s in separate}
+    scope.update({s['id']: 'type' for members in by_type.values() for s in members})
 
     answers = {}
     if progress:
         progress(0, len(asked))
     pool = ThreadPoolExecutor(max_workers=workers)
     try:
-        for done, future in enumerate(as_completed([pool.submit(run, s) for s in asked]), 1):
-            structure, answer, error = future.result()
-            answers[structure['id']] = (answer, error)
+        # типы — первыми: в них больше структур
+        futures = [pool.submit(run_type, kind, members) for kind, members in by_type.items()]
+        futures += [pool.submit(run, s) for s in separate]
+        done = 0
+        for future in as_completed(futures):
+            for structure, answer, error in future.result():
+                answers[structure['id']] = (answer, error)
+                done += 1
             if progress:
                 progress(done, len(asked))
     except BaseException:
@@ -808,6 +1074,9 @@ def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
             # rules — подбор правилами: LLM не передана или не ответила (тогда причина в llm_error)
             record.update(status='rules' if llm is None or error else 'ok',
                           justification=answer.get('justification', ''))
+            if llm is not None and not error:
+                # structure — запрос по структуре, type — решение по классам мест для всего типа
+                record['scope'] = scope[structure['id']]
             if error:
                 record['llm_error'] = error
             if rejected:
@@ -824,6 +1093,8 @@ def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
     # название модели в результат не пишется (решение пользователя): прокси подставляет разные модели
     return {'source': 'llm' if llm is not None else 'rules', 'structures': output,
             'summary': {'structures': len(found), 'asked': len(asked),
+                        'requests': llm.requests if llm is not None else 0,
+                        'by_type': sum(v == 'type' for v in scope.values()),
                         'ok': sum(r.get('status') == 'ok' for r in output),
                         'rules': sum(r.get('status') == 'rules' for r in output),
                         'small': sum(r.get('status') == 'small' for r in output),
