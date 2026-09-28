@@ -634,7 +634,7 @@
 
             job = { id: started.job, name: started.name, summary: state.summary, view: null };
             downloadLink.href = jobUrl(job.id, 'dxf/');
-            planLink.href = jobUrl(job.id, 'plan/');
+            planLink.href = jobUrl(job.id, 'report/');
             resultName.textContent = started.name;
             resultMeta.textContent = formatSize(started.size);
             showSummary(state.summary);
@@ -661,7 +661,7 @@
             window.GreeningViewer.open(opened.view, {
                 name: opened.name,
                 summary: opened.summary,
-                links: { dxf: jobUrl(opened.id, 'dxf/'), plan: jobUrl(opened.id, 'plan/') },
+                links: { dxf: jobUrl(opened.id, 'dxf/'), plan: jobUrl(opened.id, 'report/') },
             });
         } catch (err) {
             submitError = err.message;

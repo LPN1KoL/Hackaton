@@ -101,7 +101,8 @@ def job_cancel(request, job_id):
 RESULTS = {
     'view': ('view.json', 'application/json', None),
     'dxf': ('result.dxf', 'image/vnd.dxf', '{stem}_озеленение.dxf'),
-    'plan': ('plan.json', 'application/json', '{stem}_обоснование.json'),
+    'plan': ('plan.json', 'application/json', '{stem}_план.json'),
+    'report': ('justification.json', 'application/json', '{stem}_обоснование.json'),
     'placement': ('placement.geojson', 'application/geo+json', '{stem}_рассадка.geojson'),
 }
 

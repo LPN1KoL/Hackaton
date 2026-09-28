@@ -11,6 +11,7 @@
     placement.geojson — рассадка (точки растений, пятна цветников и газона) и сводка
     result.dxf        — исходный чертёж + слои рассадки Greening_*
     view.json         — данные интерактивного превью (view.build)
+    justification.json — обоснование для выгрузки: то же, что карточки превью (view.report)
     summary.json      — итог для экрана результата
 """
 
@@ -82,6 +83,7 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
     report('view')
     view = view_data.build(geojson, plan, placement)
     _write(out / 'view.json', view)
+    _write(out / 'justification.json', view_data.report(view, plan))
 
     summary = {
         'territory_m2': geojson['metadata']['summary'].get('territory_m2'),

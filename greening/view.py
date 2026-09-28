@@ -9,7 +9,7 @@ import re
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
-from . import place, recommend
+from . import catalog, place, recommend
 from .split import MARGIN
 
 SIMPLIFY = 0.05
@@ -48,10 +48,17 @@ def _short(title):
 
 
 def _blocked_text(blocked):
-    """«деревья: кабель связи 2 м — 80%, газопровод 1.5 м — 40%» по каждому закрытому типу посадки."""
-    return [f"{PLANTING_WORDS[planting]}: " + ', '.join(
-                f"{_short(r['object'])} {r['distance_m']:g} м — {round(r['share'] * 100)}%" for r in rules)
-            for planting, rules in blocked.items() if rules]
+    """«деревья: кабель связи 2 м — 80%, газопровод 1.5 м — 40% (743-ПП, табл. 3.6.1)» по каждому закрытому
+    типу посадки; нормы одного документа — вместе, документ — после них."""
+    lines = []
+    for planting, rules in blocked.items():
+        by_doc = {}
+        for r in rules:
+            by_doc.setdefault(r.get('doc', ''), []).append(f"{_short(r['object'])} {r['distance_m']:g} м — {round(r['share'] * 100)}%")
+        if by_doc:
+            lines.append(f"{PLANTING_WORDS[planting]}: " + '; '.join(
+                ', '.join(items) + (f' ({doc})' if doc else '') for doc, items in by_doc.items()))
+    return lines
 
 
 def _labels(geometry, minimum):
@@ -153,3 +160,51 @@ def build(geojson, plan=None, placement=None):
             data['beds' if p['layer'] == 'bed' else 'lawns'].append(
                 {'d': _path(g), 't': f"{p['name']}: {p['area_m2']} м²", 's': sid, 'i': number})
     return data
+
+
+# подписи — как в карточках просмотра (core/static/core/viewer.js)
+KIND_NAMES = {'tree_shrub': 'деревья и кустарники', 'tree': 'деревья', 'shrub': 'кустарники',
+              'herbaceous': 'только травянистые', 'none': 'ничего'}
+GROUP_NAMES = {'ДЛ': 'дерево лиственное', 'ДХ': 'дерево хвойное', 'КЛ': 'кустарник лиственный',
+               'КХ': 'кустарник хвойный', 'Л': 'лиана', 'М': 'многолетник', 'О': 'однолетник', 'Б': 'луковичные', 'Г': 'газон'}
+
+
+def _decided(item, status):
+    if item.get('by') == 'code':
+        return 'код'
+    return 'правила' if item.get('by') == 'rules' or status == 'rules' else 'LLM'
+
+
+def report(data, plan):
+    """Обоснование для выгрузки (justification.json): то же, что показывают карточки просмотра, без геометрии.
+
+    data — результат build(); plan — plan.json (из него — отклонённые посадки и источник подбора)."""
+    names = {p['id']: p['name'] for p in catalog.load()}
+    planned = {s['id']: s for s in plan['structures']}
+    structures = []
+    for s in data['structures']:
+        record = planned.get(s['id'], {})
+        status = record.get('status', s['status'])
+        structures.append({
+            'структура': s['id'], 'название': s['name'], 'место': s['place'],
+            'всего_м2': s['total'], 'газоны_м2': s['area'], 'состав': s['composition'],
+            'существующих_деревьев': s['trees'], 'замысел': s['justification'],
+            'посадки': [{
+                'зона': p['zone'], 'растение': p['name'], 'группа': GROUP_NAMES.get(p['group'], p['group']),
+                'приём': p['role'], 'количество': p['placed'], 'единица': 'шт' if p['unit'] == 'шт' else 'м²',
+                'обоснование': p['reason'], 'нормы': p['norms'], 'свойства': p['facts'],
+                'предупреждения': p['warnings'], 'решено': _decided(p, status),
+            } for p in s['plantings']],
+            'зоны': [{
+                'зона': z['id'], 'газон': z['patch'], 'площадь_м2': z['area'], 'можно_сажать': KIND_NAMES[z['kind']],
+                'место': z['explanation'] or z['place'], 'решение': z['decision'], 'условия': z['tags'],
+                'почему_без_посадок': z['reason'], 'что_закрыло_деревья_и_кустарники': z['blocked'],
+                'посадки': z['plantings'],
+            } for z in s['zones']],
+            'отклонено': [{
+                'зона': r.get('zone'), 'растение': names.get(r.get('plant_id'), r.get('plant_id')),
+                'приём': r.get('role'), 'причина': r['rejected'],
+                **({'заменено_на': r['replaced_by']} if r.get('replaced_by') else {}),
+            } for r in record.get('rejected', [])],
+        })
+    return {'подбор': 'LLM' if plan.get('source') == 'llm' else 'правила', 'структуры': structures}
