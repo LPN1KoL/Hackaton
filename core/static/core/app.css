@@ -146,6 +146,7 @@ h1 {
 }
 
 .drop-bar[hidden] { display: none; }
+.btn[hidden] { display: none; }
 
 /* без превью в баре только имя файла — делить его надвое нечем */
 .drop-bar:not(:has(.drop-divider)) { grid-template-columns: 1fr; }

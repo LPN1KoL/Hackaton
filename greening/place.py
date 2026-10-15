@@ -27,6 +27,11 @@
 - кустарники — пока их кроны не займут shrub_cover_share зоны (остальное — газон и цветник);
 - цветник — bed_share зоны; газон — остаток.
 apply_counts() записывает получившиеся количества в план.
+
+Режим рассадки (mode): 'algorithm' — места выбирает эвристика (_open_score: открытое место, стиль);
+'model' — обученная модель (model.py): из тех же допустимых точек (внутри зоны, где вид разрешён нормами,
+и с соблюдением расстояний между растениями) берётся точка, которую модель оценила выше, — как ставят
+проектировщики. Ряды и изгороди в обоих режимах идут вдоль края у дорожки. Модели нет — алгоритм.
 """
 
 import argparse
@@ -44,6 +49,7 @@ from shapely.geometry import LineString, MultiPoint, Point, mapping, shape
 from shapely.ops import linemerge, substring, unary_union
 
 from . import catalog
+from . import model as learned
 
 CONFIG = Path(__file__).resolve().parent / 'config' / 'placement.json'
 KIND = {'ДЛ': 'tree', 'ДХ': 'tree', 'КЛ': 'shrub', 'КХ': 'shrub', 'Л': 'shrub',
@@ -214,12 +220,23 @@ def _hex_layout(n, spacing, aspect, angle, rng, jitter):
 
 
 class Placer:
-    def __init__(self, config, existing, rng, paths):
+    def __init__(self, config, existing, rng, paths, scorer=None):
         self.config, self.rng = config, rng
         self.field = Field(config, existing)
         self.paths = paths
         self.group_seq = 0
         self.outlines = []          # контуры групп и изгородей для вывода
+        # режим «модель»: оценка мест обученной моделью; site — газон текущей зоны (model.Site)
+        self.scorer = scorer
+        self.site = None
+
+    def _rank(self, kind, zone, points, crown, style):
+        """Оценки точек: модель (лог-вероятность с шумом Гумбеля — разнообразие от seed) или эвристика."""
+        if self.scorer is not None and self.site is not None:
+            p = self.scorer(kind, self.site, points, self.field)
+            noise = self.rng.gumbel(size=len(points)) * self.config['model_temperature']
+            return list(np.log(np.clip(p, 1e-6, 1)) + noise), list(p)
+        return [self._open_score(zone, q, crown, style) for q in points], None
 
     # --- параметры вида -------------------------------------------------------------------------------
 
@@ -265,7 +282,12 @@ class Placer:
                 options = [(x, y) for x, y in _grid(zone) if self.field.ok(x, y, plant)]
             if not options:
                 break
-            x, y = max(options, key=lambda p: self._open_score(zone, p, crown, style))
+            scores, probs = self._rank(kind, zone, options, crown, style)
+            best = int(np.argmax(scores))
+            # модель считает все оставшиеся места неподходящими — солитер не ставится
+            if probs is not None and probs[best] < self.config['model_min_score'][kind]:
+                break
+            x, y = options[best]
             self._take(x, y, plant, placed)
         return placed
 
@@ -335,35 +357,76 @@ class Placer:
         return placed
 
     def _try_group(self, zone, size, kind, crown, spacing, style, meta, attempts=4):
-        """Группа целиком или ничего: центр — открытое место, форма — случайная из подходящих."""
+        """Группа целиком или ничего. Алгоритм: центр — открытое место, первая подошедшая форма.
+        Модель: варианты положения и формы оцениваются по всем растениям группы (средняя оценка модели)."""
         gid = self._new_group()
         plant = (kind, crown, spacing, gid)
-        landscape = style == 'landscape'
+        if self.scorer is not None and self.site is not None:
+            return self._try_group_model(zone, size, kind, crown, spacing, style, meta, plant, attempts)
         for _ in range(attempts):
             centres = [(x, y) for x, y in _sample(zone, self.rng, self.config['candidates'] // 2)]
             if not centres:
                 return None
             centres.sort(key=lambda p: -self._open_score(zone, p, crown, style))
             for cx, cy in centres[:6]:
-                drift = size >= 5 and self.rng.random() < (0.7 if landscape else 0.35)
-                aspect = self.rng.uniform(1.8, 3.2) if drift else self.rng.uniform(1.0, 1.4)
-                angle = _edge_angle(zone, cx, cy) + (self.rng.normal(0, 0.25) if landscape else 0.0)
-                # решётка с запасом шага — лёгкий случайный сдвиг не сближает кусты сильнее шага
-                jitter = 0.05 if landscape else 0.02
-                layout = _hex_layout(size, spacing * (1 + 3 * jitter), aspect, angle, self.rng, jitter)
-                pts = [(cx + dx, cy + dy) for dx, dy in layout]
-                if min((math.dist(a, b) for i, a in enumerate(pts) for b in pts[i + 1:]), default=spacing) < spacing:
-                    continue
-                if not all(zone.contains(Point(p)) for p in pts):
-                    continue
-                if not all(self.field.ok(x, y, plant) for x, y in pts):
-                    continue
-                out = []
-                for x, y in pts:
-                    self._take(x, y, plant, out)
-                self._outline(out, crown, 'drift' if drift else 'group' if size > 1 else 'single', meta)
-                return out
+                found = self._layout_at(zone, cx, cy, size, spacing, style, plant)
+                if found is not None:
+                    return self._place_group(found, plant, crown, meta)
         return None
+
+    def _try_group_model(self, zone, size, kind, crown, spacing, style, meta, plant, attempts):
+        """Варианты группы в разных местах зоны; выбирается тот, где выше средняя оценка модели по всем
+        растениям группы (с шумом Гумбеля — разнообразие от seed). Ниже model_min_score — группа не ставится."""
+        per_attempt = self.config['model_group_variants']
+        for _ in range(attempts):
+            centres = _sample(zone, self.rng, self.config['candidates'] // 2)
+            if not centres:
+                return None
+            variants = []
+            for cx, cy in centres[:per_attempt]:
+                found = self._layout_at(zone, cx, cy, size, spacing, style, plant)
+                if found is not None:
+                    variants.append(found)
+            if not variants:
+                continue
+            points = [q for pts, _ in variants for q in pts]
+            probs = self.scorer(kind, self.site, points, self.field)
+            means, at = [], 0
+            for pts, _ in variants:
+                means.append(float(np.mean(probs[at:at + len(pts)])))
+                at += len(pts)
+            noise = self.rng.gumbel(size=len(variants)) * self.config['model_temperature']
+            best = int(np.argmax(np.log(np.clip(means, 1e-6, 1)) + noise))
+            if means[best] < self.config['model_min_score'][kind]:
+                return None
+            return self._place_group(variants[best], plant, crown, meta)
+        return None
+
+    def _layout_at(self, zone, cx, cy, size, spacing, style, plant):
+        """Форма группы вокруг центра (случайная из подходящих): (точки, вытянутая ли) или None, если не встаёт."""
+        landscape = style == 'landscape'
+        drift = size >= 5 and self.rng.random() < (0.7 if landscape else 0.35)
+        aspect = self.rng.uniform(1.8, 3.2) if drift else self.rng.uniform(1.0, 1.4)
+        angle = _edge_angle(zone, cx, cy) + (self.rng.normal(0, 0.25) if landscape else 0.0)
+        # решётка с запасом шага — лёгкий случайный сдвиг не сближает кусты сильнее шага
+        jitter = 0.05 if landscape else 0.02
+        layout = _hex_layout(size, spacing * (1 + 3 * jitter), aspect, angle, self.rng, jitter)
+        pts = [(cx + dx, cy + dy) for dx, dy in layout]
+        if min((math.dist(a, b) for i, a in enumerate(pts) for b in pts[i + 1:]), default=spacing) < spacing:
+            return None
+        if not all(zone.contains(Point(p)) for p in pts):
+            return None
+        if not all(self.field.ok(x, y, plant) for x, y in pts):
+            return None
+        return pts, drift
+
+    def _place_group(self, found, plant, crown, meta):
+        pts, drift = found
+        out = []
+        for x, y in pts:
+            self._take(x, y, plant, out)
+        self._outline(out, crown, 'drift' if drift else 'group' if len(pts) > 1 else 'single', meta)
+        return out
 
     def _outline(self, points, crown, layout, meta, line=None):
         if len(points) < 2 and line is None:
@@ -519,15 +582,36 @@ def _style(structure, seed, config):
     return 'landscape' if roll < share else 'formal'
 
 
-def place(geojson, plan, seed=0, config=None, log=print):
+MODES = ('algorithm', 'model')
+KEPT_BED_NOTE = 'Здесь существующий цветник — он сохраняется, новая посадка на его месте не устраивается.'
+
+
+def place(geojson, plan, seed=0, config=None, log=print, mode='algorithm', model=None):
+    """mode — 'algorithm' или 'model' (см. начало модуля); model — model.Model, по умолчанию из greening/models."""
     config = config or load_config()
     rng = np.random.default_rng(seed)
     features = [(shape(f['geometry']), f['properties']) for f in geojson['features']]
     sections = {p['id']: g for g, p in features if p['layer'] == 'section'}
     existing = [g for g, p in features if p['layer'] == 'tree']
     paths = unary_union([g for g, p in features if p['layer'] == 'surface' and p['surface'] in PATH_SURFACES])
+    # существующие цветники сохраняются: новые цветники и газон их не накрывают
+    old_beds = unary_union([g for g, p in features if p['layer'] == 'surface' and p['surface'] == 'flowerbed'])
     plants = {p['id']: p for p in catalog.load()}
-    placer = Placer(config, existing, rng, paths)
+    # mode ниже переиспользуется для приёма посадки — режим рассадки хранится отдельно
+    used, requested, note = mode, mode, None
+    if mode not in MODES:
+        raise ValueError(f'Неизвестный режим рассадки: {mode}')
+    scorer = None
+    if mode == 'model':
+        model = model or learned.load()
+        if model is None:
+            used, note = 'algorithm', 'Модели рассадки нет (greening/models/placement.npz) — места выбраны алгоритмом'
+            log(note)
+        else:
+            surfaces = {p['surface']: g for g, p in features if p['layer'] == 'surface'}
+            # модель училась без условных стволов полос — в её признаках только отдельные деревья
+            scorer = Scorer(model, surfaces, [g for g, p in features if p['layer'] == 'tree' and not p.get('row')])
+    placer = Placer(config, existing, rng, paths, scorer)
 
     out, summary, styles = [], [], {}
     for structure in plan['structures']:
@@ -545,6 +629,12 @@ def place(geojson, plan, seed=0, config=None, log=print):
             base = {'structure': structure['id'], 'zone': zone_id, 'patch': zone.get('patch')}
             # край зоны — нормативная граница: точки ставятся чуть внутрь, чтобы округление их не вынесло
             inner = geometry.buffer(-ROUNDING)
+            if scorer is not None:
+                # модель смотрит на весь газон зоны (u1…), а выбирает только внутри зоны
+                same = [z for z in structure['zones'] if z.get('patch') == zone.get('patch')] if zone.get('patch') else [zone]
+                parts = [(unary_union([sections[s] for s in z['sections'] if s in sections]), z['allowed']) for z in same]
+                patch = unary_union([g for g, _ in parts])
+                placer.site = scorer.site((structure['id'], zone.get('patch') or zone_id), patch, parts)
             points, areas = [], []
             for index, item in items:
                 kind = KIND.get(item.get('group'), 'herbaceous')
@@ -598,8 +688,10 @@ def place(geojson, plan, seed=0, config=None, log=print):
             beds = [a for a in areas if a[1].get('group') != LAWN_GROUP]
             bed_area = min(config['bed_share'] * geometry.area, config['bed_max_m2']) / max(len(beds), 1)
             queue = beds + lawns
+            free = geometry.difference(old_beds) if not old_beds.is_empty and old_beds.intersects(geometry) else geometry
+            kept_bed = free.area < 0.5 * geometry.area
             for n, (index, item, kind) in enumerate(queue):
-                available = geometry.difference(unary_union(taken)) if taken else geometry
+                available = free.difference(unary_union(taken)) if taken else free
                 lawn = item.get('group') == LAWN_GROUP
                 last = n == len(queue) - 1 and (lawn or not lawns)
                 target = available.area / (len(queue) - n) if lawn else bed_area
@@ -614,7 +706,12 @@ def place(geojson, plan, seed=0, config=None, log=print):
                                                'group': item.get('group'), 'kind': kind, 'role': item.get('role'),
                                                'area_m2': area}})
                 summary.append({**base, 'index': index, 'plant_id': item.get('plant_id'), 'name': item.get('name'),
-                                'kind': kind, 'role': item.get('role'), 'unit': 'м2', 'placed': area})
+                                'kind': kind, 'role': item.get('role'), 'unit': 'м2', 'placed': area,
+                                **({'note': KEPT_BED_NOTE} if kept_bed and not area else {})})
+
+    # сквозной номер растения: по нему точка в DXF, проверка отступов и обоснование ссылаются друг на друга
+    for number, feature in enumerate((f for f in out if f['properties']['layer'] == 'plant'), 1):
+        feature['properties'] = {'id': f'R{number:05d}', **feature['properties']}
 
     for group in placer.outlines:
         g = group.pop('geometry')
@@ -630,11 +727,56 @@ def place(geojson, plan, seed=0, config=None, log=print):
     return {
         'type': 'FeatureCollection',
         'metadata': {'seed': seed, 'config': {k: v for k, v in config.items() if not k.startswith('_')},
+                     'mode': used, 'requested_mode': requested, **({'mode_note': note} if note else {}),
+                     **({'model': _model_card(scorer.model)} if scorer is not None else {}),
                      'styles': styles,
                      'summary': {'totals': {k: {'placed': round(v, 1)} for k, v in totals.items()}},
                      'plantings': summary},
         'features': out,
     }
+
+
+class Scorer:
+    """Оценка мест моделью: газон с окружением и существующими деревьями (model.Site) кэшируется.
+    Расстояния до уже посаженного модель не учитывает — их держат правила (Field)."""
+
+    def __init__(self, model, surfaces, existing):
+        self.model = model
+        self.surfaces = surfaces
+        self.existing = _PointIndex([g for g in existing])
+        self.sites = {}
+
+    def site(self, key, patch, zones=()):
+        """zones — [(геометрия зоны газона, allowed)]: где какой вид запрещён нормами (признак модели)."""
+        if key not in self.sites:
+            patch = learned.polygonal(patch)
+            near = patch.buffer(learned.CONTEXT_M)
+            self.sites[key] = learned.Site(patch, {k: g.intersection(near) for k, g in self.surfaces.items()},
+                                           self.existing.points_near(near), learned.blocked_parts(zones))
+        return self.sites[key]
+
+    def __call__(self, kind, site, points, field):
+        return self.model.score(kind, site, [p[0] for p in points], [p[1] for p in points])
+
+
+class _PointIndex:
+    """Точки существующих деревьев с индексом: какие лежат в области."""
+
+    def __init__(self, points):
+        self.points = points
+        self.index = shapely.STRtree(points) if points else None
+
+    def points_near(self, area):
+        if self.index is None:
+            return []
+        return [(self.points[int(i)].x, self.points[int(i)].y) for i in self.index.query(area, predicate='intersects')]
+
+
+def _model_card(model):
+    kinds = model.meta.get('kinds', {})
+    return {kind: {'auc_model': k.get('auc_model_mean'), 'auc_algorithm': k.get('auc_algorithm_mean'),
+                   'positives_project': k.get('positives_project'), 'objects': len(k.get('objects_with_project', []))}
+            for kind, k in kinds.items()}
 
 
 def apply_counts(plan, result):
@@ -647,7 +789,8 @@ def apply_counts(plan, result):
             value = s['placed'] if s else 0
             item['unit'], item['quantity'] = unit, (int(value) if unit == 'шт' else round(float(value), 1))
             if not value:
-                note = 'Рассадка не нашла места: зона уже занята другими посадками и существующими деревьями с нужными просветами.'
+                note = (s or {}).get('note') or ('Рассадка не нашла места: зона уже занята другими посадками '
+                                                 'и существующими деревьями с нужными просветами.')
                 item['warnings'] = [w for w in item.get('warnings', []) if w != note] + [note]
     return plan
 
@@ -736,6 +879,8 @@ def main():
     parser.add_argument('plan', help='результат python -m greening.recommend (*.plan.json)')
     parser.add_argument('--seed', type=int, default=0, help='зерно случайности: тот же seed — та же рассадка')
     parser.add_argument('--out', help='папка (по умолчанию рядом с разметкой)')
+    parser.add_argument('--placement', choices=MODES, default='algorithm',
+                        help='как выбирать места: algorithm — эвристика, model — обученная модель')
     args = parser.parse_args()
 
     source = Path(args.geojson)
@@ -743,7 +888,7 @@ def main():
     out = Path(args.out) if args.out else source.parent
     geojson = json.loads(source.read_text(encoding='utf-8'))
     plan = json.loads(Path(args.plan).read_text(encoding='utf-8'))
-    result = place(geojson, plan, args.seed)
+    result = place(geojson, plan, args.seed, mode=args.placement)
     problems = verify(result, geojson)
     Path(args.plan).write_text(json.dumps(apply_counts(plan, result), ensure_ascii=False), encoding='utf-8')
     result['metadata']['summary']['violations'] = len(problems)

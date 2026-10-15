@@ -120,8 +120,21 @@ def _wall_share(face, walls, index):
     ring = face.exterior
     band = ring.buffer(WALL_SNAP)
     # длины кусков стен в полосе вдоль контура; наложения редки — дубликаты уже убраны
-    along = sum(walls[int(n)].intersection(band).length for n in index.query(band, predicate='intersects'))
+    along = sum(_safe_intersection(walls[int(n)], band).length for n in index.query(band, predicate='intersects'))
     return min(along / ring.length, 1.0)
+
+
+def _safe_intersection(geometry, other):
+    """Пересечение; невалидный контур из чертежа (самопересечение) сначала исправляется — иначе GEOS падает."""
+    try:
+        return geometry.intersection(other)
+    except shapely.errors.GEOSException:
+        pass
+    try:
+        return shapely.intersection(shapely.make_valid(geometry), shapely.make_valid(other), grid_size=0.001)
+    except shapely.errors.GEOSException:
+        # не исправилось и на сетке 1 мм — этот кусок стены в долю контура не входит
+        return Polygon()
 
 
 def build(items, territory, classifier):

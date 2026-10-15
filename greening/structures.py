@@ -14,6 +14,8 @@ from .surfaces import EDGE_KINDS, LABEL_KINDS
 TREE_MERGE = 0.8
 # полоса вокруг пунктира «Полоса деревьев», м
 TREE_ROW_HALF_WIDTH = 1.5
+# условные стволы вдоль «Полосы деревьев»: шаг, м — как в рядовой посадке (743-ПП, табл. 3.6.2: 5–6 м)
+TREE_ROW_STEP = 5.0
 # радиус поиска линий вокруг подписи площадки, м
 LABEL_SEARCH = 40.0
 # контур площадки, если замкнутой грани вокруг подписи не нашлось, м
@@ -154,6 +156,35 @@ def trees(items, territory):
         points = [blob.centroid for blob in getattr(blobs, 'geoms', [blobs])]
     row_area = unary_union(shapely.buffer(rows, TREE_ROW_HALF_WIDTH)) if rows else Point().buffer(0)
     return points, row_area
+
+
+def row_trunks(items, territory, existing=(), step=TREE_ROW_STEP):
+    """Условные стволы в «Полосах деревьев»: в подоснове полоса — пунктир без отдельных стволов, а правилам
+    рассадки и проверкам нужны точки, иначе ряд старых деревьев засаживается новыми. Из центров штрихов полосы
+    берутся точки не ближе step друг к другу и к отдельным деревьям existing — получается ряд с шагом ~step."""
+    area = territory.buffer(TREE_ROW_HALF_WIDTH * 2)
+    shapely.prepare(area)
+    centres = []
+    for item in items:
+        if item.kind == 'tree' and item.etype not in ('TEXT', 'MTEXT') and 'полос' in item.layer.casefold():
+            c = item.geometry.centroid
+            if not c.is_empty and area.contains(c):
+                centres.append((c.x, c.y))
+    if not centres:
+        return []
+    cell = step
+    grid = {}
+    for p in existing:
+        grid.setdefault((math.floor(p.x / cell), math.floor(p.y / cell)), []).append((p.x, p.y))
+    out = []
+    for x, y in sorted(centres):
+        i, j = math.floor(x / cell), math.floor(y / cell)
+        near = [q for a in (i - 1, i, i + 1) for b in (j - 1, j, j + 1) for q in grid.get((a, b), ())]
+        if any((qx - x) ** 2 + (qy - y) ** 2 < (step * 0.9) ** 2 for qx, qy in near):
+            continue
+        grid.setdefault((i, j), []).append((x, y))
+        out.append(Point(x, y))
+    return out
 
 
 def find(items, territory, classifier):

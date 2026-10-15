@@ -17,6 +17,7 @@
     const errorLine = document.getElementById('error');
     const downloadLink = document.getElementById('download');
     const planLink = document.getElementById('download-plan');
+    const clearanceLink = document.getElementById('download-clearance');
     const restartButton = document.getElementById('restart');
     const viewerButton = document.getElementById('open-viewer');
     const summaryList = document.getElementById('result-summary');
@@ -592,6 +593,14 @@
             ['Цветники и газон', placed('herbaceous_m2') + ' м²'],
             ['Нарушений правил', summary.violations],
         ];
+        if (summary.placement) rows.push(['Места посадки', summary.placement === 'model' ? 'модель' : 'алгоритм']);
+        // проверка отступов по исходной геометрии чертежа; у задач до 15.10 её нет
+        if (summary.clearance_checked != null) {
+            rows.push(['Отступы по чертежу', summary.clearance_violations
+                ? 'нарушений ' + summary.clearance_violations + ' из ' + summary.clearance_checked
+                : 'соблюдены у ' + summary.clearance_checked + ' растений']);
+        }
+        if (summary.clearance_approvals) rows.push(['В охранных зонах сетей (согласование)', summary.clearance_approvals]);
         if (summary.by_rules) rows.push(['Подобрано правилами (без LLM)', summary.by_rules + ' из ' + summary.structures]);
         summaryList.innerHTML = rows.map(function (row) {
             return '<dt>' + row[0] + '</dt><dd>' + row[1] + '</dd>';
@@ -635,6 +644,8 @@
             job = { id: started.job, name: started.name, summary: state.summary, view: null };
             downloadLink.href = jobUrl(job.id, 'dxf/');
             planLink.href = jobUrl(job.id, 'report/');
+            clearanceLink.href = jobUrl(job.id, 'clearance/');
+            clearanceLink.hidden = state.summary.clearance_checked == null;
             resultName.textContent = started.name;
             resultMeta.textContent = formatSize(started.size);
             showSummary(state.summary);

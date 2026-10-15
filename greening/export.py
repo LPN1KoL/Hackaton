@@ -57,6 +57,9 @@ def to_geojson(result):
                        'outside': structure.get('outside', False)})
     for point in result.trees:
         add(point, {'layer': 'tree'})
+    # ствол в полосе деревьев — условный: для рассадки и проверок это существующее дерево, row — откуда он
+    for point in getattr(result, 'row_trees', []):
+        add(point, {'layer': 'tree', 'row': True})
     if not result.tree_rows.is_empty:
         add(result.tree_rows, {'layer': 'tree_row', 'area_m2': round(result.tree_rows.area, 1)})
     for section in result.sections:

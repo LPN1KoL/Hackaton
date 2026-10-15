@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import shapely
 from shapely import STRtree
 
-from . import reader, sections, structures, surfaces, territory
+from . import clearance, reader, sections, structures, surfaces, territory
 from .classify import Classifier
 
 # объекты дальше этого от территории не нужны: самый большой отступ — 10 м от школ
@@ -26,6 +26,10 @@ class Result:
     summary: dict
     layers: dict = field(default_factory=dict)
     timings: dict = field(default_factory=dict)
+    # объекты нормированных классов по исходной геометрии — для проверки отступов рассадки (clearance.py)
+    obstacles: dict = field(default_factory=dict)
+    # условные стволы в полосах деревьев (structures.row_trunks)
+    row_trees: list = field(default_factory=list)
 
 
 def _layer_report(items, area):
@@ -74,9 +78,14 @@ def parse(plan, geobase=None, log=None):
 
     found = structures.find(local, area, classifier)
     tree_points, tree_rows = structures.trees(local, area)
+    # полосы деревьев — условные стволы через 5 м: для правил рассадки и проверок это существующие деревья
+    row_points = structures.row_trunks(local, area, tree_points)
     lap('структуры')
 
-    section_list, summary = sections.build(local, surface_map, found, (tree_points, tree_rows))
+    norms = sections.load_norms()
+    skip = sections.find_leaders(local, norms)
+    section_list, summary = sections.build(local, surface_map, found, (tree_points, tree_rows), norms, skip)
+    obstacles = clearance.collect(local, surface_map, found, norms, skip)
     lap('секции')
 
     summary.update(
@@ -85,6 +94,7 @@ def parse(plan, geobase=None, log=None):
         surface_sources=surface_sources,
         structures=dict(Counter(s['type'] for s in found)),
         trees=len(tree_points),
+        row_trees=len(row_points),
         tree_rows_m2=round(tree_rows.area, 1),
         allowed_m2={
             '+'.join(key) or 'none': round(sum(s['area_m2'] for s in section_list if tuple(s['allowed']) == key), 1)
@@ -92,4 +102,4 @@ def parse(plan, geobase=None, log=None):
         },
     )
     return Result(area, info, surface_map, found, tree_points, tree_rows, section_list, summary,
-                  _layer_report(local, area), timings)
+                  _layer_report(local, area), timings, obstacles, row_points)

@@ -12,7 +12,7 @@ KIND = {'ДЛ': 'tree', 'ДХ': 'tree', 'КЛ': 'shrub', 'КХ': 'shrub', 'Л': 
         'М': 'herbaceous', 'О': 'herbaceous', 'Б': 'herbaceous', 'Г': 'herbaceous'}
 # «для деревьев», «для кустарников»
 FOR = {'tree': 'для деревьев', 'shrub': 'для кустарников', 'herbaceous': 'для травянистых'}
-TABLE = '743-ПП, табл. 3.6.1'
+TABLE = '743-ПП, п. 3.6.3, табл. 3.6.1'
 WIDE_CROWN_M = 10.0
 TERRITORY = {'Д': 'дворовые территории', 'С': 'дошкольные учреждения', 'Ш': 'школы и спортивные учреждения',
              'М': 'учреждения здравоохранения', 'Т': 'магистрали и местные проезды',
@@ -43,6 +43,15 @@ def _table():
 
 
 TABLE_RULES = _table()
+PLAYGROUND = '623-ПП (МГСН 1.02-02), п. 4.12.7.3'
+
+
+def cite(title, doc=''):
+    """Полная ссылка на акт и пункт по названию объекта правила (cite в config/norms.json).
+
+    В запрос LLM идёт короткая doc — от неё зависит кэш ответов; в обоснования и DXF — эта.
+    """
+    return TABLE_RULES.get(title, {}).get('cite') or doc
 
 
 def _short(title):
@@ -60,7 +69,7 @@ def _nearby(zone, planting):
         if rule['doc'] == 'config/norms.json':
             continue
         entry = TABLE_RULES.get(rule['object'], {})
-        doc = entry.get('doc', rule['doc'])
+        doc = entry.get('cite') or entry.get('doc', rule['doc'])
         distance = entry.get(planting)
         name = _short(rule['object'])
         if planting != 'herbaceous' and distance:
@@ -86,12 +95,13 @@ def norms(plant, zone, structure):
     if 'шк' in plant['flags']:
         distance = zone.get('building_m')
         if distance is not None and distance < WIDE_CROWN_M:
-            return lines, f'широкая крона ближе {WIDE_CROWN_M:g} м от здания ({distance:g} м), {TABLE}, примечание'
+            return lines, f'широкая крона ближе {WIDE_CROWN_M:g} м от здания ({distance:g} м), {TABLE}, примечание 3'
         lines.append(f'Широкая крона: до зданий {"больше 50" if distance is None else f"{distance:g}"} м, '
-                     f'не ближе {WIDE_CROWN_M:g} м соблюдено ({TABLE}, примечание)')
+                     f'не ближе {WIDE_CROWN_M:g} м соблюдено ({TABLE}, примечание 3)')
 
     if zone.get('near_ground'):
-        lines.append('Рядом детская или спортивная площадка: ограничения ассортимента по детским площадкам у вида нет')
+        lines.append('Рядом детская или спортивная площадка: ограничения ассортимента по детским площадкам у вида нет '
+                     f'(без колючек и ядовитых плодов — {PLAYGROUND})')
 
     source = HERBACEOUS_SOURCE.get(plant['group'], ASSORTMENT[plant['assortment']])
     lines.append(source[0].upper() + source[1:])

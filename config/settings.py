@@ -162,6 +162,10 @@ GREENING_LLM_WORKERS = int(os.environ.get('GREENING_LLM_WORKERS', '5'))
 GREENING_LLM = os.environ.get('GREENING_LLM', '1') != '0'
 # None — отправлять в LLM все структуры; число — только столько крупнейших (для проверки без трат)
 GREENING_LLM_LIMIT = None
+# как выбирать места посадки: 'algorithm' — эвристика place.py, 'model' — обученная модель (greening/model.py,
+# веса — greening/models/placement.npz). Модель выбирает только среди мест, разрешённых нормами. Переменная окружения
+# GREENING_PLACEMENT; нет файла модели — рассадка алгоритмом с пометкой в сводке.
+GREENING_PLACEMENT = os.environ.get('GREENING_PLACEMENT', 'algorithm')
 
 # Прежний путь через сервис Влада (core/processing.py). Сейчас /upload/ его не вызывает,
 # модуль и настройки оставлены: в проекте нет git, удалённое не вернуть.

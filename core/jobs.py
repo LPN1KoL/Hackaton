@@ -124,7 +124,7 @@ def _run(path, inputs):
             summary = service.run(inputs['file'], inputs.get('geobase'), path / 'out',
                                   cache_dir=settings.GREENING_LLM_CACHE, progress=progress,
                                   workers=settings.GREENING_LLM_WORKERS, limit=settings.GREENING_LLM_LIMIT,
-                                  use_llm=settings.GREENING_LLM)
+                                  use_llm=settings.GREENING_LLM, placement=settings.GREENING_PLACEMENT)
         except Cancelled as exc:
             logger.info('Задача %s остановлена: %s', job_id, exc)
             _save(path, state='cancelled', error=str(exc), finished=time.time())

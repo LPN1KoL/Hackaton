@@ -9,7 +9,7 @@ import re
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
-from . import catalog, place, recommend
+from . import catalog, justify, place, recommend
 from .split import MARGIN
 
 SIMPLIFY = 0.05
@@ -54,7 +54,7 @@ def _blocked_text(blocked):
     for planting, rules in blocked.items():
         by_doc = {}
         for r in rules:
-            by_doc.setdefault(r.get('doc', ''), []).append(f"{_short(r['object'])} {r['distance_m']:g} м — {round(r['share'] * 100)}%")
+            by_doc.setdefault(justify.cite(r['object'], r.get('doc', '')), []).append(f"{_short(r['object'])} {r['distance_m']:g} м — {round(r['share'] * 100)}%")
         if by_doc:
             lines.append(f"{PLANTING_WORDS[planting]}: " + '; '.join(
                 ', '.join(items) + (f' ({doc})' if doc else '') for doc, items in by_doc.items()))
@@ -77,7 +77,8 @@ def build(geojson, plan=None, placement=None):
         'territory': _path(territory),
         'surfaces': [{'kind': p['surface'], 'd': _path(g)} for g, p in features
                      if p['layer'] == 'surface' and p['surface'] in SURFACES],
-        'trees': [[round(g.x, 2), round(-g.y, 2)] for g, p in features if p['layer'] == 'tree'],
+        # условные стволы полос не рисуются — полоса показана своим контуром (rows)
+        'trees': [[round(g.x, 2), round(-g.y, 2)] for g, p in features if p['layer'] == 'tree' and not p.get('row')],
         # у существующих деревьев в подоснове только значок ствола — крона рисуется условной
         'existing_crown': place.load_config().get('existing_crown_m', 6.0),
         'rows': ''.join(_path(g) for g, p in features if p['layer'] == 'tree_row'),

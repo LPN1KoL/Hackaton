@@ -103,6 +103,7 @@ RESULTS = {
     'dxf': ('result.dxf', 'image/vnd.dxf', '{stem}_озеленение.dxf'),
     'plan': ('plan.json', 'application/json', '{stem}_план.json'),
     'report': ('justification.json', 'application/json', '{stem}_обоснование.json'),
+    'clearance': ('clearance.json', 'application/json', '{stem}_проверка_отступов.json'),
     'placement': ('placement.geojson', 'application/geo+json', '{stem}_рассадка.geojson'),
 }
 

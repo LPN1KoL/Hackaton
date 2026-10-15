@@ -16,6 +16,8 @@ services:
       # за nginx сервис открывают по любому адресу машины (IP, имя в сети)
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
       GREENING_LLM: ${GREENING_LLM:-1}
+      # места посадки: algorithm — эвристика, model — обученная модель (только в разрешённых нормами зонах)
+      GREENING_PLACEMENT: ${GREENING_PLACEMENT:-algorithm}
     volumes:
       - ./jobs:/app/jobs              # задачи и их результаты переживают пересоздание контейнера
       - ./.llm_cache:/app/.llm_cache  # кэш ответов LLM: повторный прогон того же чертежа бесплатный

@@ -30,9 +30,17 @@ TILE = 60.0
 QUAD_SEGS = 4
 # общая граница короче этого — касание, а не соседство, м
 SHARED_EDGE = 0.01
+# разрез куска по зоне: допустимое расхождение площадей (доля) и сетка пересчёта, м
+CUT_TOLERANCE = 1e-6
+GRID = 0.001
 # шум, который остаётся после склейки: площадь, м², и средняя ширина, м
 NOISE_AREA = 0.05
 NOISE_WIDTH = 0.05
+
+
+# существующий цветник — не норма отступа, а решение сохранить существующие насаждения
+EXISTING_BED = {'object': 'existing_flowerbed', 'rule': 'EXISTING-FLOWERBED', 'tree': 0.0, 'shrub': 0.0,
+                'doc': 'существующие насаждения сохраняются', 'title': 'Существующий цветник'}
 
 
 def load_norms(path=NORMS):
@@ -135,11 +143,22 @@ def _split(pieces, name, zone):
         elif zone.contains(geometry):
             result.append((geometry, marks | {name}))
         else:
-            for part, extra in ((geometry.intersection(zone), {name}), (geometry.difference(zone), set())):
+            for part, extra in zip(_cut(geometry, zone), ({name}, set())):
                 part = unary_union(_polygons(part))
                 if not part.is_empty:
                     result.append((part, marks | extra))
     return result
+
+
+def _cut(geometry, zone):
+    """(часть внутри зоны, часть снаружи). GEOS на почти совпадающих краях иногда возвращает разность
+    целиком, без вычета — запретная полоса тогда попадает и в разрешённую секцию. Сумма площадей должна
+    сойтись с исходной; не сошлась — пересчёт на сетке GRID."""
+    inside, outside = geometry.intersection(zone), geometry.difference(zone)
+    if abs(inside.area + outside.area - geometry.area) > CUT_TOLERANCE * max(geometry.area, 1.0):
+        inside = shapely.intersection(geometry, zone, grid_size=GRID)
+        outside = shapely.difference(geometry, zone, grid_size=GRID)
+    return inside, outside
 
 
 def _tiles(polygon):
@@ -154,8 +173,15 @@ def _tiles(polygon):
     return tiles
 
 
-def build(items, surfaces, structures, trees, norms=None):
-    """Секции: [{'id', 'geometry', 'area_m2', 'surface', 'allowed', 'tags', 'rules'}] и сводка."""
+def find_leaders(items, norms):
+    return leaders.find(items, {r['object'] for r in norms['distance_rules'] if r['source'] == 'layer'})
+
+
+def build(items, surfaces, structures, trees, norms=None, skip=None):
+    """Секции: [{'id', 'geometry', 'area_m2', 'surface', 'allowed', 'tags', 'rules'}] и сводка.
+
+    skip — индексы выносок (leaders.find); не задан — ищутся здесь.
+    """
     norms = norms or load_norms()
     green_parts = [(surfaces[s], s) for s in GREEN if s in surfaces]
     if not green_parts:
@@ -164,7 +190,8 @@ def build(items, surfaces, structures, trees, norms=None):
 
     reach = max([r.get(t, 0) for r in norms['distance_rules'] for t in PLANTING_TYPES] +
                 [c['distance'] for c in norms['context']])
-    skip = leaders.find(items, {r['object'] for r in norms['distance_rules'] if r['source'] == 'layer'})
+    if skip is None:
+        skip = find_leaders(items, norms)
     sources = Sources(items, surfaces, structures, trees, green.buffer(reach, quad_segs=QUAD_SEGS), skip)
     rules = [(planting, rule) for rule in norms['distance_rules'] for planting in PLANTING_TYPES if planting in rule]
 
@@ -185,10 +212,15 @@ def build(items, surfaces, structures, trees, norms=None):
                         pieces = _split(pieces, 'tag:' + context['tag'], zone)
                     elif not zone.is_empty:
                         notes[context['tag']].append(zone)
+                if surface == 'flowerbed':
+                    # существующий цветник сохраняется: деревья и кустарники на нём не сажаются
+                    pieces = [(piece, marks | {f'rule:{planting}:{EXISTING_BED["object"]}' for planting in PLANTING_TYPES})
+                              for piece, marks in pieces]
                 for piece, marks in pieces:
                     signed[marks].append(piece)
 
     rule_info = {f"rule:{planting}:{rule['object']}": (planting, rule) for planting, rule in rules}
+    rule_info.update({f'rule:{planting}:{EXISTING_BED["object"]}': (planting, EXISTING_BED) for planting in PLANTING_TYPES})
 
     # секция определяется тем, что важно для посадки: поверхность, что можно сажать, условия места;
     # конкретные правила — её свойство, а не повод резать газон ещё мельче

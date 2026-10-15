@@ -52,5 +52,15 @@
   "edge_reach_m": 2.5,
   "_style_comment": "Стиль структуры: доля пейзажного (куртины, свободные группы) по типу структуры; остальное — регулярный.",
   "landscape_share": {"street": 0.2, "plaza": 0.5, "yard": 0.7, "playground": 0.6, "square": 0.8, "lawn": 0.6},
-  "candidates": 60
+  "candidates": 60,
+
+  "_model_comment": [
+    "Режим «модель» (model.py): выбор среди допустимых точек по оценке модели. model_temperature — разброс выбора",
+    "(шум Гумбеля к лог-вероятности, 0 — всегда лучшая точка); model_min_score — ниже этой оценки место не берётся.",
+    "Группа оценивается по всем своим растениям (средняя оценка); model_group_variants — сколько мест группы",
+    "пробуется за попытку."
+  ],
+  "model_group_variants": 12,
+  "model_temperature": 0.1,
+  "model_min_score": {"tree": 0.2, "shrub": 0.2}
 }
