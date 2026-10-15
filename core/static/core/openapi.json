@@ -133,6 +133,11 @@
                     "type": "string",
                     "format": "binary",
                     "description": "Геоподоснова в формате DXF (необязательно)"
+                  },
+                  "preferences": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "description": "Пожелания к подбору растений (необязательно): текст уходит в запрос LLM, нормы и справочник важнее"
                   }
                 }
               }
@@ -170,6 +175,83 @@
           },
           "400": {
             "$ref": "#/components/responses/BadFile"
+          }
+        }
+      }
+    },
+    "/params/": {
+      "get": {
+        "tags": [
+          "Чертежи"
+        ],
+        "summary": "Параметры рассадки",
+        "operationId": "params_schema",
+        "description": "Описание параметров рассадки для редактирования результата (уровень 2): группы, ключи, тип (float, int, sizes — список целых, choice), пределы, шаг, единицы, значение по умолчанию, в каком режиме рассадки действует (both, model, algorithm).",
+        "responses": {
+          "200": {
+            "description": "Описание",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "groups": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "params": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": "string"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "type": "string",
+                            "enum": [
+                              "both",
+                              "model",
+                              "algorithm"
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "help": {
+                            "type": "string"
+                          },
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          },
+                          "step": {
+                            "type": "number"
+                          },
+                          "unit": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          },
+                          "default": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -379,6 +461,249 @@
           },
           "404": {
             "description": "Нет такой задачи"
+          }
+        }
+      }
+    },
+    "/jobs/{job}/revise/": {
+      "post": {
+        "tags": [
+          "Чертежи"
+        ],
+        "summary": "Пересчитать: пожелания к растениям и/или параметры рассадки",
+        "operationId": "job_revise",
+        "description": "Редактирование результата. Создаёт новую задачу — версию готовой: те же входные файлы, разметка берётся из исходной задачи (не считается заново). Уровень 1 — preferences: новые пожелания к растениям уходят в запрос LLM, подбор растений заново. Уровень 2 — params: параметры рассадки (список, пределы и значения по умолчанию — GET /params/); если пожелания не менялись, подбор растений берётся из исходной задачи и LLM не вызывается — пересчитываются рассадка, проверка отступов, DXF и обоснования. Параметры накапливаются по версиям: новые поверх параметров исходной. Нет поля preferences — пожелания прежние, пустое — пожелания сняты. Нормы параметрами не меняются. Исходная задача не меняется; ход и результаты новой — как у /upload/, в её статусе parent, preferences, params.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "номер готовой задачи"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "preferences": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "example": "больше хвойных, без тополей",
+                    "description": "Пожелания к подбору растений (уровень 1)"
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "example": {
+                      "placement": "model",
+                      "tree_unit_spacing_m": 12,
+                      "group_sizes_small": [
+                        3,
+                        5
+                      ],
+                      "solitary_max_tree": 2,
+                      "style_mode": "landscape",
+                      "seed": 7
+                    },
+                    "description": "Параметры рассадки {ключ: значение} (уровень 2), ключи — GET /params/. В форме — JSON-строкой"
+                  }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "preferences": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "example": "больше хвойных, без тополей",
+                    "description": "Пожелания к подбору растений (уровень 1)"
+                  },
+                  "params": {
+                    "type": "string",
+                    "additionalProperties": true,
+                    "example": {
+                      "placement": "model",
+                      "tree_unit_spacing_m": 12,
+                      "group_sizes_small": [
+                        3,
+                        5
+                      ],
+                      "solitary_max_tree": 2,
+                      "style_mode": "landscape",
+                      "seed": 7
+                    },
+                    "description": "Параметры рассадки {ключ: значение} (уровень 2), ключи — GET /params/. В форме — JSON-строкой"
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "preferences": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "example": "больше хвойных, без тополей",
+                    "description": "Пожелания к подбору растений (уровень 1)"
+                  },
+                  "params": {
+                    "type": "string",
+                    "additionalProperties": true,
+                    "example": {
+                      "placement": "model",
+                      "tree_unit_spacing_m": 12,
+                      "group_sizes_small": [
+                        3,
+                        5
+                      ],
+                      "solitary_max_tree": 2,
+                      "style_mode": "landscape",
+                      "seed": 7
+                    },
+                    "description": "Параметры рассадки {ключ: значение} (уровень 2), ключи — GET /params/. В форме — JSON-строкой"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Пересчёт запущен",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "type": "string",
+                      "description": "номер новой задачи"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer"
+                    },
+                    "parent": {
+                      "type": "string",
+                      "description": "номер исходной задачи"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Нет ни пожеланий, ни параметров; неверное значение параметра ({\"errors\": {\"params.ключ\": [\"…\"]}})"
+          },
+          "404": {
+            "description": "Нет такой задачи"
+          },
+          "409": {
+            "description": "Исходная задача ещё не готова"
+          }
+        }
+      }
+    },
+    "/jobs/{job}/move/": {
+      "post": {
+        "tags": [
+          "Чертежи"
+        ],
+        "summary": "Сохранить перемещения растений",
+        "operationId": "job_move",
+        "description": "Редактирование результата, уровень 3: растения, передвинутые мышью на сайте. Новая задача — версия готовой: растения стоят там, куда их передвинули (координаты чертежа); рассадка заново не считается, заново — проверка правил (verify), проверка отступов по чертежу, DXF, просмотр и обоснования. Растение вне разрешённой зоны или ближе нормы не запрещается, а попадает в нарушения. Номера растений (R00001…) — в placement.geojson и view.json. Пересчёт пожеланий или параметров после этого строит рассадку заново — перемещения пропадают.",
+        "parameters": [
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "moves"
+                ],
+                "properties": {
+                  "moves": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "x",
+                        "y"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "example": "R00012"
+                        },
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Сохранение запущено",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer"
+                    },
+                    "parent": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Нет перемещений или они неверны"
+          },
+          "404": {
+            "description": "Нет такой задачи"
+          },
+          "409": {
+            "description": "Исходная задача ещё не готова"
           }
         }
       }

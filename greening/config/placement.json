@@ -52,6 +52,19 @@
   "edge_reach_m": 2.5,
   "_style_comment": "Стиль структуры: доля пейзажного (куртины, свободные группы) по типу структуры; остальное — регулярный.",
   "landscape_share": {"street": 0.2, "plaza": 0.5, "yard": 0.7, "playground": 0.6, "square": 0.8, "lawn": 0.6},
+  "_style_mode_comment": "auto — стиль по типу структуры (landscape_share); landscape или formal — один стиль везде.",
+  "style_mode": "auto",
+  "_drift_comment": "Доля групп от 5 растений, вытянутых вдоль края (куртина), по стилю; group_jitter — случайный сдвиг растений в группе, доля шага.",
+  "drift_share": {"landscape": 0.7, "formal": 0.35},
+  "group_jitter": {"landscape": 0.05, "formal": 0.02},
+  "_amount_comment": [
+    "solitary_max — одиночных растений вида на зону не больше (null — без предела);",
+    "tree_max_per_100m2 — новых деревьев на 100 м² зоны не больше, ряды тоже считаются (null — без предела)."
+  ],
+  "solitary_max": {"tree": null, "shrub": null},
+  "tree_max_per_100m2": null,
+  "_edge_pull_comment": "Режим «алгоритм»: тяга солитеров и центров групп — больше нуля к середине газона, меньше — к краю.",
+  "edge_pull": {"landscape": 0.15, "formal": -0.15},
   "candidates": 60,
 
   "_model_comment": [

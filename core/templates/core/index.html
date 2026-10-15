@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="{% static 'core/app.css' %}">
 </head>
 <body data-preview-url="{% url 'core:preview' %}" data-preview-upload="{{ preview_on_upload|yesno:'1,0' }}"
-      data-jobs-url="{% url 'core:job' 'JOB' %}">
+      data-jobs-url="{% url 'core:job' 'JOB' %}" data-params-url="{% url 'core:params' %}">
     <main class="stage">
         <section class="step is-active" data-step="upload">
             <h1>Загрузка чертежа</h1>
@@ -68,6 +68,8 @@
             <dl class="result-summary" id="result-summary"></dl>
 
             <button type="button" class="btn" id="open-viewer">Открыть просмотр</button>
+            <button type="button" class="btn btn-ghost" id="open-editor">Изменить</button>
+            <p class="revise-error" id="result-error" hidden></p>
             <a class="btn btn-ghost" id="download" download>Скачать DXF</a>
             <a class="btn btn-ghost" id="download-plan" download>Скачать обоснование (JSON)</a>
             <a class="btn btn-ghost" id="download-clearance" download hidden>Скачать проверку отступов (JSON)</a>
@@ -150,7 +152,81 @@
         <aside class="viewer-info"></aside>
     </div>
 
+
+    <div class="viewer editor" id="editor" hidden>
+        <header class="viewer-bar">
+            <div class="viewer-head">
+                <span class="viewer-title">Редактирование</span>
+            </div>
+            <nav class="ed-tabs">
+                <button type="button" data-tab="params" class="is-on">1. Пожелания и параметры</button>
+                <button type="button" data-tab="move">2. Перемещение растений</button>
+            </nav>
+            <div class="viewer-actions">
+                <button type="button" class="viewer-button" data-action="close">Закрыть</button>
+            </div>
+        </header>
+
+        <section class="ed-pane ed-pane-params" data-pane="params">
+            <div class="ed-column">
+                <p class="ed-warn ed-moved-note" hidden></p>
+                <h2>Пожелания к растениям</h2>
+                <textarea class="ed-text" rows="3" maxlength="2000"
+                          placeholder="Например: больше хвойных и цветущих кустарников, без тополей и берёз"></textarea>
+                <p class="ed-note">Текст уходит в запрос к LLM — подбор растений заново. Нормы и справочник растений важнее пожеланий.</p>
+                <h2>Параметры рассадки</h2>
+                <p class="ed-note">Действуют в обоих режимах рассадки, кроме отмеченных. Без новых пожеланий LLM не вызывается — пересчитывается только рассадка. Нормы параметрами не меняются. Двойной щелчок по названию — значение по умолчанию.</p>
+                <div class="ed-params"></div>
+            </div>
+            <footer class="ed-actions">
+                <p class="ed-error" data-error="params" hidden></p>
+                <button type="button" class="viewer-button" data-action="reset">Сбросить параметры</button>
+                <button type="button" class="viewer-button is-primary" data-action="recalculate">Пересчитать</button>
+            </footer>
+        </section>
+
+        <section class="ed-pane ed-pane-move" data-pane="move" hidden>
+            <aside class="ed-side">
+                <div class="ed-warn">
+                    <b>Сначала пожелания и параметры, потом перемещения.</b>
+                    Пересчёт (вкладка 1) строит рассадку заново — сдвинутые растения встанут иначе.
+                    Порядок: пожелания и параметры → «Пересчитать» → здесь двигаете растения → «Сохранить перемещения» → скачиваете DXF.
+                </div>
+                <p class="ed-warn ed-noids" hidden>Эта версия сделана до появления номеров растений: двигать можно, но сохранить — только после пересчёта.</p>
+                <h2>Что двигать</h2>
+                <div class="ed-segments ed-mode">
+                    <button type="button" data-mode="plant" class="is-on">растение</button>
+                    <button type="button" data-mode="group">группу целиком</button>
+                </div>
+                <p class="ed-note">Перетаскивайте растение мышью; контур группы — всю группу. Колесо — масштаб, перетаскивание фона — сдвиг карты.</p>
+                <dl class="ed-stats">
+                    <dt>Перемещено</dt><dd data-stat="moved">0</dd>
+                    <dt>Вне зон, где вид разрешён</dt><dd data-stat="outside">0</dd>
+                </dl>
+                <p class="ed-note">Красным — растение вне зоны, где его вид разрешён нормами. Двигать туда можно: при сохранении это попадёт в «Нарушения правил», а если растение окажется ближе нормы к сетям, зданиям или проезду — ещё и в проверку отступов и слой <code>Greening_Нарушения</code> DXF.</p>
+                <div class="ed-legend">
+                    <span><i class="lg-tree"></i>дерево</span><span><i class="lg-shrub"></i>куст</span>
+                    <span><i class="lg-moved"></i>сдвинуто</span><span><i class="lg-outside"></i>вне зоны</span>
+                </div>
+                <div class="ed-buttons">
+                    <button type="button" class="viewer-button" data-action="undo">Отменить шаг</button>
+                    <button type="button" class="viewer-button" data-action="revert">Вернуть всё</button>
+                </div>
+                <p class="ed-error" data-error="move" hidden></p>
+                <button type="button" class="viewer-button is-primary ed-save" data-action="save-moves">Сохранить перемещения</button>
+            </aside>
+            <div class="viewer-map ed-map">
+                <svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+                <div class="viewer-zoom">
+                    <button type="button" data-action="zoom-in">+</button>
+                    <button type="button" data-action="zoom-out">−</button>
+                    <button type="button" data-action="fit">Весь участок</button>
+                </div>
+            </div>
+        </section>
+    </div>
     <script src="{% static 'core/viewer.js' %}"></script>
+    <script src="{% static 'core/editor.js' %}"></script>
     <script src="{% static 'core/app.js' %}"></script>
 </body>
 </html>

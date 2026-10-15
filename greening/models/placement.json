@@ -22,8 +22,8 @@
  },
  "kinds": {
   "tree": {
-   "rows": 12327,
-   "positives_project": 2313,
+   "rows": 12456,
+   "positives_project": 2335,
    "objects_with_project": [
     "1. Олимпийская деревня",
     "10. Старый Гай ул",
@@ -37,59 +37,59 @@
    "holdout": [
     {
      "object": "1. Олимпийская деревня",
-     "positives": 1196,
-     "auc_model": 0.605,
-     "auc_algorithm": 0.624
+     "positives": 1215,
+     "auc_model": 0.596,
+     "auc_algorithm": 0.577
     },
     {
      "object": "10. Старый Гай ул",
      "positives": 32,
-     "auc_model": 0.652,
-     "auc_algorithm": 0.552
+     "auc_model": 0.601,
+     "auc_algorithm": 0.59
     },
     {
      "object": "12. Наташинский пр-д(Дорога от ул. Борисовские пруды до пр.пр5396(вокруг м-р Братеево))",
      "positives": 198,
-     "auc_model": 0.701,
-     "auc_algorithm": 0.606
+     "auc_model": 0.68,
+     "auc_algorithm": 0.587
     },
     {
      "object": "13. Харьковский проезд",
      "positives": 119,
-     "auc_model": 0.704,
-     "auc_algorithm": 0.578
+     "auc_model": 0.691,
+     "auc_algorithm": 0.584
     },
     {
      "object": "2. Песчаный переулок",
-     "positives": 30,
-     "auc_model": 0.728,
-     "auc_algorithm": 0.486
+     "positives": 33,
+     "auc_model": 0.701,
+     "auc_algorithm": 0.5
     },
     {
      "object": "20. Макеева С. ул",
      "positives": 144,
-     "auc_model": 0.542,
-     "auc_algorithm": 0.465
+     "auc_model": 0.556,
+     "auc_algorithm": 0.436
     },
     {
      "object": "4. Харьковская улица",
      "positives": 572,
-     "auc_model": 0.672,
-     "auc_algorithm": 0.704
+     "auc_model": 0.647,
+     "auc_algorithm": 0.675
     },
     {
      "object": "5. Багрицкого улица",
      "positives": 22,
-     "auc_model": 0.547,
-     "auc_algorithm": 0.357
+     "auc_model": 0.598,
+     "auc_algorithm": 0.344
     }
    ],
-   "auc_model_mean": 0.644,
-   "auc_algorithm_mean": 0.546
+   "auc_model_mean": 0.634,
+   "auc_algorithm_mean": 0.537
   },
   "shrub": {
-   "rows": 51483,
-   "positives_project": 12228,
+   "rows": 57577,
+   "positives_project": 13751,
    "objects_with_project": [
     "1. Олимпийская деревня",
     "10. Старый Гай ул",
@@ -105,67 +105,67 @@
    "holdout": [
     {
      "object": "1. Олимпийская деревня",
-     "positives": 10017,
-     "auc_model": 0.466,
-     "auc_algorithm": 0.518
+     "positives": 10429,
+     "auc_model": 0.445,
+     "auc_algorithm": 0.52
     },
     {
      "object": "10. Старый Гай ул",
      "positives": 49,
-     "auc_model": 0.584,
-     "auc_algorithm": 0.55
+     "auc_model": 0.583,
+     "auc_algorithm": 0.534
     },
     {
      "object": "12. Наташинский пр-д(Дорога от ул. Борисовские пруды до пр.пр5396(вокруг м-р Братеево))",
      "positives": 537,
-     "auc_model": 0.74,
-     "auc_algorithm": 0.635
+     "auc_model": 0.732,
+     "auc_algorithm": 0.565
     },
     {
      "object": "13. Харьковский проезд",
      "positives": 68,
-     "auc_model": 0.696,
-     "auc_algorithm": 0.676
+     "auc_model": 0.669,
+     "auc_algorithm": 0.659
     },
     {
      "object": "15. Академика Понтрягина",
      "positives": 304,
-     "auc_model": 0.577,
-     "auc_algorithm": 0.588
+     "auc_model": 0.557,
+     "auc_algorithm": 0.583
     },
     {
      "object": "16. улица Берзарина",
      "positives": 524,
-     "auc_model": 0.608,
-     "auc_algorithm": 0.567
+     "auc_model": 0.612,
+     "auc_algorithm": 0.565
     },
     {
      "object": "17. Грузинская М ул",
      "positives": 172,
-     "auc_model": 0.466,
-     "auc_algorithm": 0.255
+     "auc_model": 0.543,
+     "auc_algorithm": 0.269
     },
     {
      "object": "2. Песчаный переулок",
-     "positives": 98,
-     "auc_model": 0.772,
-     "auc_algorithm": 0.899
+     "positives": 1209,
+     "auc_model": 0.659,
+     "auc_algorithm": 0.588
     },
     {
      "object": "20. Макеева С. ул",
      "positives": 309,
-     "auc_model": 0.459,
-     "auc_algorithm": 0.463
+     "auc_model": 0.455,
+     "auc_algorithm": 0.4
     },
     {
      "object": "4. Харьковская улица",
      "positives": 150,
-     "auc_model": 0.65,
-     "auc_algorithm": 0.698
+     "auc_model": 0.595,
+     "auc_algorithm": 0.621
     }
    ],
-   "auc_model_mean": 0.602,
-   "auc_algorithm_mean": 0.585
+   "auc_model_mean": 0.585,
+   "auc_algorithm_mean": 0.53
   }
  }
 }

@@ -1,0 +1,171 @@
+{
+ "features": [
+  "edge",
+  "path",
+  "road",
+  "building",
+  "tree",
+  "trees_10m",
+  "no_tree",
+  "no_shrub",
+  "width",
+  "area",
+  "depth",
+  "align"
+ ],
+ "samples": "D:/Projects/greening_data/samples",
+ "hidden": {
+  "tree": [
+   16
+  ],
+  "shrub": []
+ },
+ "kinds": {
+  "tree": {
+   "rows": 12327,
+   "positives_project": 2313,
+   "objects_with_project": [
+    "1. Олимпийская деревня",
+    "10. Старый Гай ул",
+    "12. Наташинский пр-д(Дорога от ул. Борисовские пруды до пр.пр5396(вокруг м-р Братеево))",
+    "13. Харьковский проезд",
+    "2. Песчаный переулок",
+    "20. Макеева С. ул",
+    "4. Харьковская улица",
+    "5. Багрицкого улица"
+   ],
+   "holdout": [
+    {
+     "object": "1. Олимпийская деревня",
+     "positives": 1196,
+     "auc_model": 0.605,
+     "auc_algorithm": 0.624
+    },
+    {
+     "object": "10. Старый Гай ул",
+     "positives": 32,
+     "auc_model": 0.652,
+     "auc_algorithm": 0.552
+    },
+    {
+     "object": "12. Наташинский пр-д(Дорога от ул. Борисовские пруды до пр.пр5396(вокруг м-р Братеево))",
+     "positives": 198,
+     "auc_model": 0.701,
+     "auc_algorithm": 0.606
+    },
+    {
+     "object": "13. Харьковский проезд",
+     "positives": 119,
+     "auc_model": 0.704,
+     "auc_algorithm": 0.578
+    },
+    {
+     "object": "2. Песчаный переулок",
+     "positives": 30,
+     "auc_model": 0.728,
+     "auc_algorithm": 0.486
+    },
+    {
+     "object": "20. Макеева С. ул",
+     "positives": 144,
+     "auc_model": 0.542,
+     "auc_algorithm": 0.465
+    },
+    {
+     "object": "4. Харьковская улица",
+     "positives": 572,
+     "auc_model": 0.672,
+     "auc_algorithm": 0.704
+    },
+    {
+     "object": "5. Багрицкого улица",
+     "positives": 22,
+     "auc_model": 0.547,
+     "auc_algorithm": 0.357
+    }
+   ],
+   "auc_model_mean": 0.644,
+   "auc_algorithm_mean": 0.546
+  },
+  "shrub": {
+   "rows": 51483,
+   "positives_project": 12228,
+   "objects_with_project": [
+    "1. Олимпийская деревня",
+    "10. Старый Гай ул",
+    "12. Наташинский пр-д(Дорога от ул. Борисовские пруды до пр.пр5396(вокруг м-р Братеево))",
+    "13. Харьковский проезд",
+    "15. Академика Понтрягина",
+    "16. улица Берзарина",
+    "17. Грузинская М ул",
+    "2. Песчаный переулок",
+    "20. Макеева С. ул",
+    "4. Харьковская улица"
+   ],
+   "holdout": [
+    {
+     "object": "1. Олимпийская деревня",
+     "positives": 10017,
+     "auc_model": 0.466,
+     "auc_algorithm": 0.518
+    },
+    {
+     "object": "10. Старый Гай ул",
+     "positives": 49,
+     "auc_model": 0.584,
+     "auc_algorithm": 0.55
+    },
+    {
+     "object": "12. Наташинский пр-д(Дорога от ул. Борисовские пруды до пр.пр5396(вокруг м-р Братеево))",
+     "positives": 537,
+     "auc_model": 0.74,
+     "auc_algorithm": 0.635
+    },
+    {
+     "object": "13. Харьковский проезд",
+     "positives": 68,
+     "auc_model": 0.696,
+     "auc_algorithm": 0.676
+    },
+    {
+     "object": "15. Академика Понтрягина",
+     "positives": 304,
+     "auc_model": 0.577,
+     "auc_algorithm": 0.588
+    },
+    {
+     "object": "16. улица Берзарина",
+     "positives": 524,
+     "auc_model": 0.608,
+     "auc_algorithm": 0.567
+    },
+    {
+     "object": "17. Грузинская М ул",
+     "positives": 172,
+     "auc_model": 0.466,
+     "auc_algorithm": 0.255
+    },
+    {
+     "object": "2. Песчаный переулок",
+     "positives": 98,
+     "auc_model": 0.772,
+     "auc_algorithm": 0.899
+    },
+    {
+     "object": "20. Макеева С. ул",
+     "positives": 309,
+     "auc_model": 0.459,
+     "auc_algorithm": 0.463
+    },
+    {
+     "object": "4. Харьковская улица",
+     "positives": 150,
+     "auc_model": 0.65,
+     "auc_algorithm": 0.698
+    }
+   ],
+   "auc_model_mean": 0.602,
+   "auc_algorithm_mean": 0.585
+  }
+ }
+}

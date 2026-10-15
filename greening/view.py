@@ -152,11 +152,13 @@ def build(geojson, plan=None, placement=None):
             # куст в группе или изгороди — точка посадочного места: крону показывает контур группы
             in_group = p['kind'] == 'shrub' and (p.get('group_size', 1) > 1 or p.get('role') in ('живая изгородь', 'рядовая посадка'))
             radius = GROUP_SPOT if in_group else round(p['crown_m'] / 2, 2)
+            # [x, -y, радиус, вид, подпись, структура, посадка, номер растения, группа] — номер и группа для редактора
             data['plants'].append([round(g.x, 2), round(-g.y, 2), radius, p['kind'],
-                                   f"{p['name']} ({p['role']}), {p['structure']}/{p['zone']}", sid, number])
+                                   f"{p['name']} ({p['role']}), {p['structure']}/{p['zone']}", sid, number,
+                                   p.get('id'), p.get('group_id')])
         elif p['layer'] == 'group':
             data['groups'].append({'d': _path(g), 't': f"{p['label']} — {p['role']}", 's': sid, 'i': number,
-                                   'label': p['label'], 'at': _labels(g, 0)[:1]})
+                                   'label': p['label'], 'at': _labels(g, 0)[:1], 'gid': p.get('group_id')})
         else:
             data['beds' if p['layer'] == 'bed' else 'lawns'].append(
                 {'d': _path(g), 't': f"{p['name']}: {p['area_m2']} м²", 's': sid, 'i': number})

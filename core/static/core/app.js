@@ -21,6 +21,8 @@
     const restartButton = document.getElementById('restart');
     const viewerButton = document.getElementById('open-viewer');
     const summaryList = document.getElementById('result-summary');
+    const editorButton = document.getElementById('open-editor');
+    const resultError = document.getElementById('result-error');
     const stageLine = document.getElementById('stage-line');
     const stageItems = document.querySelectorAll('#stage-list [data-stage]');
     const jobsUrl = document.body.dataset.jobsUrl;
@@ -602,9 +604,42 @@
         }
         if (summary.clearance_approvals) rows.push(['В охранных зонах сетей (согласование)', summary.clearance_approvals]);
         if (summary.by_rules) rows.push(['Подобрано правилами (без LLM)', summary.by_rules + ' из ' + summary.structures]);
+        if (summary.preferences) rows.push(['Пожелания', summary.preferences_note || 'учтены в подборе растений']);
+        const changed = summary.params ? Object.keys(summary.params).filter(function (k) { return k !== 'placement'; }) : [];
+        if (changed.length) rows.push(['Параметры рассадки', 'изменено: ' + changed.length]);
+        if (summary.plan_reused) rows.push(['Подбор растений', 'прежний (пересчитана рассадка)']);
+        if (summary.moved) rows.push(['Перемещено вручную', summary.moved + ' растений']);
         summaryList.innerHTML = rows.map(function (row) {
             return '<dt>' + row[0] + '</dt><dd>' + row[1] + '</dd>';
         }).join('');
+    }
+
+    // ждёт задачу started ({job, name, size}) и показывает её результат; закрытие страницы её отменяет
+    async function follow(started) {
+        let running = started.job;
+        function abandon(event) {
+            if (!running || event.persisted) return;
+            const body = new FormData();
+            body.append('csrfmiddlewaretoken', form.elements.csrfmiddlewaretoken.value);
+            navigator.sendBeacon(jobUrl(running, 'cancel/'), body);
+        }
+        window.addEventListener('pagehide', abandon);
+        const state = await waitFor(started.job).finally(function () {
+            running = null;
+            window.removeEventListener('pagehide', abandon);
+        });
+
+        job = { id: started.job, name: started.name, summary: state.summary, view: null,
+                params: state.params || {}, preferences: state.preferences || state.summary.preferences || '' };
+        downloadLink.href = jobUrl(job.id, 'dxf/');
+        planLink.href = jobUrl(job.id, 'report/');
+        clearanceLink.href = jobUrl(job.id, 'clearance/');
+        clearanceLink.hidden = state.summary.clearance_checked == null;
+        resultName.textContent = started.name;
+        resultMeta.textContent = formatSize(started.size);
+        resultError.hidden = true;
+        showSummary(state.summary);
+        goTo('result');
     }
 
     form.addEventListener('submit', async function (e) {
@@ -624,36 +659,84 @@
         goTo('processing');
 
         // страницу закрывают, пока чертёж считается, — задача отменяется и не держит очередь для других
-        let running = null;
-        function abandon(event) {
-            if (!running || event.persisted) return;
-            const body = new FormData();
-            body.append('csrfmiddlewaretoken', form.elements.csrfmiddlewaretoken.value);
-            navigator.sendBeacon(jobUrl(running, 'cancel/'), body);
-        }
-        window.addEventListener('pagehide', abandon);
-
         try {
-            const started = await post(form.action, files);
-            running = started.job;
-            const state = await waitFor(started.job).finally(function () {
-                running = null;
-                window.removeEventListener('pagehide', abandon);
-            });
-
-            job = { id: started.job, name: started.name, summary: state.summary, view: null };
-            downloadLink.href = jobUrl(job.id, 'dxf/');
-            planLink.href = jobUrl(job.id, 'report/');
-            clearanceLink.href = jobUrl(job.id, 'clearance/');
-            clearanceLink.hidden = state.summary.clearance_checked == null;
-            resultName.textContent = started.name;
-            resultMeta.textContent = formatSize(started.size);
-            showSummary(state.summary);
-            goTo('result');
+            await follow(await post(form.action, files));
         } catch (err) {
             goTo('upload');
             submitError = err.message;
             refresh();
+        }
+    });
+
+    // --- редактирование: отдельное окно (editor.js) — пожелания, параметры, перемещения ------------------
+    async function loadView(opened) {
+        if (!opened.view) {
+            const response = await fetch(jobUrl(opened.id, 'view/'));
+            if (!response.ok) throw new Error('Не удалось загрузить данные результата.');
+            opened.view = await response.json();
+        }
+        return opened.view;
+    }
+
+    // пересчёт — новая версия задачи: окно закрывается, ход — на «Обработке», потом — новый результат
+    async function recalculate(previous, started, title) {
+        window.GreeningEditor.close();
+        resultError.hidden = true;
+        stageLine.textContent = title;
+        stageItems.forEach(function (item) { item.classList.remove('is-done', 'is-active'); });
+        goTo('processing');
+        try {
+            await follow(started);
+        } catch (err) {
+            // не удалось — остаётся прежний результат
+            job = previous;
+            showSummary(previous.summary);
+            goTo('result');
+            resultError.textContent = err.message;
+            resultError.hidden = false;
+        }
+    }
+
+    function postJson(url, body) {
+        return fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': form.elements.csrfmiddlewaretoken.value },
+            body: JSON.stringify(body),
+        }).then(async function (response) {
+            const data = await response.json().catch(function () { return {}; });
+            if (!response.ok) {
+                const messages = data && data.errors ? Object.values(data.errors).flat() : [];
+                throw new Error(messages.join(' ') || 'Не удалось отправить.');
+            }
+            return data;
+        });
+    }
+
+    editorButton.addEventListener('click', async function () {
+        if (!job) return;
+        const opened = job;
+        editorButton.disabled = true;
+        resultError.hidden = true;
+        try {
+            const data = await loadView(opened);
+            if (job !== opened) return;
+            window.GreeningEditor.open(data, {
+                name: opened.name, summary: opened.summary, params: opened.params, preferences: opened.preferences,
+            }, {
+                revise: async function (body) {
+                    const started = await post(jobUrl(opened.id, 'revise/'), body);
+                    recalculate(opened, started, 'Пересчёт');
+                },
+                move: async function (moves) {
+                    const started = await postJson(jobUrl(opened.id, 'move/'), { moves: moves });
+                    recalculate(opened, started, 'Сохранение перемещений');
+                },
+            });
+        } catch (err) {
+            resultError.textContent = err.message;
+            resultError.hidden = false;
+        } finally {
+            editorButton.disabled = false;
         }
     });
 
@@ -663,11 +746,7 @@
         viewerButton.disabled = true;
         viewerButton.textContent = 'Загрузка просмотра…';
         try {
-            if (!opened.view) {
-                const response = await fetch(jobUrl(opened.id, 'view/'));
-                if (!response.ok) throw new Error('Не удалось загрузить просмотр.');
-                opened.view = await response.json();
-            }
+            await loadView(opened);
             if (job !== opened) return;
             window.GreeningViewer.open(opened.view, {
                 name: opened.name,

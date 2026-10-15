@@ -298,8 +298,10 @@ class Placer:
         room = min(self.field.clearance(x, y), 2.5 * crown)
         edge = zone.boundary.distance(Point(x, y))
         inside = min(edge, crown / 2)
-        pull = -edge if style == 'formal' else min(edge, 3 * crown)
-        return room + 0.6 * inside + 0.15 * pull + self.rng.uniform(0, 0.25 * crown)
+        # к середине — до трёх крон от края, к краю — без предела
+        weight = self.config['edge_pull'][style]
+        pull = weight * (min(edge, 3 * crown) if weight >= 0 else edge)
+        return room + 0.6 * inside + pull + self.rng.uniform(0, 0.25 * crown)
 
     # --- группы и куртины ------------------------------------------------------------------------------
 
@@ -333,26 +335,34 @@ class Placer:
             placed += group
         return placed
 
-    def fill(self, entries, kind, style, budget=math.inf):
+    def fill(self, entries, kind, style, budget=math.inf, limit=math.inf):
         """Заполнение зоны солитерами и группами нескольких видов по очереди (виды перемешиваются), пока
-        встают и пока не исчерпан budget — площадь крон, м². entries — [(зона для центров, крона, режим, meta)].
+        встают и пока не исчерпан budget — площадь крон, м², и limit — число растений. Одиночных растений
+        вида — не больше solitary_max (параметр рассадки). entries — [(зона для центров, крона, режим, meta)].
         Возвращает посаженное по каждой записи."""
         placed = [[] for _ in entries]
         active = list(range(len(entries)))
-        while active and budget > 0:
+        solitary_left = self.config['solitary_max'].get(kind)
+        solitary_left = math.inf if solitary_left is None else solitary_left
+        count = 0
+        while active and budget > 0 and count < limit:
             for i in list(active):
                 region, crown, mode, meta = entries[i]
                 if mode == 'group':
                     size = int(self.rng.choice(self._options(kind, crown)))
-                    got = self.groups(region, size, kind, crown, style, meta)
-                else:
+                    got = self.groups(region, int(min(size, limit - count)), kind, crown, style, meta)
+                elif solitary_left > 0:
                     got = self.solitary(region, 1, kind, crown, style)
+                    solitary_left -= len(got)
+                else:
+                    got = []
                 if not got:
                     active.remove(i)
                     continue
                 placed[i] += got
+                count += len(got)
                 budget -= len(got) * math.pi * (crown / 2) ** 2
-                if budget <= 0:
+                if budget <= 0 or count >= limit:
                     break
         return placed
 
@@ -405,11 +415,11 @@ class Placer:
     def _layout_at(self, zone, cx, cy, size, spacing, style, plant):
         """Форма группы вокруг центра (случайная из подходящих): (точки, вытянутая ли) или None, если не встаёт."""
         landscape = style == 'landscape'
-        drift = size >= 5 and self.rng.random() < (0.7 if landscape else 0.35)
+        drift = size >= 5 and self.rng.random() < self.config['drift_share'][style]
         aspect = self.rng.uniform(1.8, 3.2) if drift else self.rng.uniform(1.0, 1.4)
         angle = _edge_angle(zone, cx, cy) + (self.rng.normal(0, 0.25) if landscape else 0.0)
         # решётка с запасом шага — лёгкий случайный сдвиг не сближает кусты сильнее шага
-        jitter = 0.05 if landscape else 0.02
+        jitter = self.config['group_jitter'][style]
         layout = _hex_layout(size, spacing * (1 + 3 * jitter), aspect, angle, self.rng, jitter)
         pts = [(cx + dx, cy + dy) for dx, dy in layout]
         if min((math.dist(a, b) for i, a in enumerate(pts) for b in pts[i + 1:]), default=spacing) < spacing:
@@ -459,9 +469,9 @@ class Placer:
                     guides.append((_rotate_ring(ring, start), False, math.dist(a, b)))
         return guides
 
-    def row(self, zone, count, kind, crown, style, meta):
+    def row(self, zone, count, kind, crown, style, meta, limit=None):
         """Ряд или изгородь. count=None — заполнение: в один ряд вдоль всех краёв у тротуара и проезда,
-        нет таких — вдоль длинной стороны зоны."""
+        нет таких — вдоль длинной стороны зоны; limit — не больше стольких растений (параметр рассадки)."""
         hedge = kind == 'shrub'
         spacing = self.shrub_spacing(crown, hedge=True) if hedge else self.tree_spacing(crown, row=True)
         gid = self._new_group()
@@ -470,7 +480,7 @@ class Placer:
         guides = self._guides(zone, offset)
         fill = count is None
         if fill:
-            count = math.inf
+            count = math.inf if limit is None else limit
             preferred = [g for g in guides if g[1]]
             guides = preferred or [(substring(g[0], 0, g[2]), False, g[2]) for g in guides[:1]]
         placed = []
@@ -577,6 +587,8 @@ def _mode(role):
 
 def _style(structure, seed, config):
     """Стиль структуры: пейзажный или регулярный — случайно, с долей по типу структуры; тот же seed — тот же стиль."""
+    if config.get('style_mode') in ('landscape', 'formal'):
+        return config['style_mode']
     share = config['landscape_share'].get(structure.get('type'), 0.5)
     roll = int(hashlib.md5(f"{structure['id']}:{seed}".encode()).hexdigest(), 16) % 1000 / 1000
     return 'landscape' if roll < share else 'formal'
@@ -584,6 +596,10 @@ def _style(structure, seed, config):
 
 MODES = ('algorithm', 'model')
 KEPT_BED_NOTE = 'Здесь существующий цветник — он сохраняется, новая посадка на его месте не устраивается.'
+NOT_FOUND_NOTE = ('Рассадка не нашла места: зона уже занята другими посадками и существующими деревьями '
+                  'с нужными просветами (или исчерпан предел, заданный параметрами рассадки).')
+AUTO_NOTES = (KEPT_BED_NOTE, NOT_FOUND_NOTE,
+              'Рассадка не нашла места: зона уже занята другими посадками и существующими деревьями с нужными просветами.')
 
 
 def place(geojson, plan, seed=0, config=None, log=print, mode='algorithm', model=None):
@@ -609,8 +625,8 @@ def place(geojson, plan, seed=0, config=None, log=print, mode='algorithm', model
             log(note)
         else:
             surfaces = {p['surface']: g for g, p in features if p['layer'] == 'surface'}
-            # модель училась без условных стволов полос — в её признаках только отдельные деревья
-            scorer = Scorer(model, surfaces, [g for g, p in features if p['layer'] == 'tree' and not p.get('row')])
+            # существующие деревья в признаках модели — вместе с условными стволами полос (так она и училась)
+            scorer = Scorer(model, surfaces, existing)
     placer = Placer(config, existing, rng, paths, scorer)
 
     out, summary, styles = [], [], {}
@@ -645,6 +661,9 @@ def place(geojson, plan, seed=0, config=None, log=print, mode='algorithm', model
             # солитерами и группами выбранных видов по очереди
             results = {}
             crowns = defaultdict(float)          # площадь крон по виду посадки, м²
+            # предел новых деревьев в зоне (параметр рассадки): ряды тоже считаются
+            per_100 = config.get('tree_max_per_100m2')
+            tree_left = math.inf if per_100 is None else math.floor(per_100 * geometry.area / 100)
             for kind in ('tree', 'shrub'):
                 entries = []
                 for index, item, k in points:
@@ -657,15 +676,19 @@ def place(geojson, plan, seed=0, config=None, log=print, mode='algorithm', model
                     if kind not in zone['allowed']:
                         results[index] = (meta, item, [])
                     elif mode == 'row':
-                        results[index] = (meta, item, placer.row(inner, None, kind, crown, style, meta))
+                        cap = None if kind != 'tree' or tree_left == math.inf else max(0, tree_left)
+                        results[index] = (meta, item, placer.row(inner, None, kind, crown, style, meta, cap) if cap != 0 else [])
                         crowns[kind] += len(results[index][2]) * math.pi * (crown / 2) ** 2
+                        if kind == 'tree':
+                            tree_left -= len(results[index][2])
                     else:
                         entries.append((index, item, (placer.inset(inner, kind, crown), crown, mode, meta)))
                 budget = math.inf
                 if kind == 'shrub':
                     # кустарники — только доля зоны: остальное остаётся газоном и цветником
                     budget = config['shrub_cover_share'][style] * max(0.0, geometry.area - crowns['tree']) - crowns['shrub']
-                filled = placer.fill([e for _, _, e in entries], kind, style, budget)
+                filled = placer.fill([e for _, _, e in entries], kind, style, budget,
+                                     max(0, tree_left) if kind == 'tree' else math.inf)
                 for (index, item, entry), placed in zip(entries, filled):
                     results[index] = (entry[3], item, placed)
                     crowns[kind] += len(placed) * math.pi * (entry[1] / 2) ** 2
@@ -779,6 +802,46 @@ def _model_card(model):
             for kind, k in kinds.items()}
 
 
+def apply_moves(result, moves):
+    """Перемещения растений пользователем (редактирование, уровень 3): moves — {номер растения: (x, y)}.
+    Растение остаётся в своей посадке и зоне (structure, zone), у него ставится moved. Контур группы: вся группа
+    сдвинута на один вектор — контур сдвигается целиком, иначе строится заново по кронам. Нормы здесь не
+    проверяются — это делают verify() и проверка отступов после. Возвращает число перемещённых растений."""
+    plants = {f['properties'].get('id'): f for f in result['features'] if f['properties']['layer'] == 'plant'}
+    deltas = defaultdict(list)
+    moved = 0
+    for pid, (x, y) in moves.items():
+        feature = plants.get(pid)
+        if feature is None:
+            continue
+        ox, oy = feature['geometry']['coordinates']
+        if abs(ox - x) < 0.005 and abs(oy - y) < 0.005:
+            continue
+        feature['geometry'] = mapping(Point(round(x, 2), round(y, 2)))
+        feature['properties']['moved'] = True
+        deltas[feature['properties'].get('group_id')].append((x - ox, y - oy))
+        moved += 1
+    members = defaultdict(list)
+    for feature in plants.values():
+        members[feature['properties'].get('group_id')].append(feature)
+    for feature in result['features']:
+        props = feature['properties']
+        if props['layer'] != 'group' or props.get('group_id') not in deltas:
+            continue
+        shifts, group = deltas[props['group_id']], members[props['group_id']]
+        whole = len(shifts) == len(group) and all(abs(dx - shifts[0][0]) < 0.01 and abs(dy - shifts[0][1]) < 0.01
+                                                  for dx, dy in shifts)
+        if whole:
+            geometry = affinity.translate(shape(feature['geometry']), shifts[0][0], shifts[0][1])
+        else:
+            radius = group[0]['properties']['crown_m'] / 2 * 0.9
+            geometry = unary_union([shape(m['geometry']).buffer(radius, quad_segs=6) for m in group]) \
+                .buffer(0.3, quad_segs=4).buffer(-0.3, quad_segs=4)
+        feature['geometry'] = mapping(shapely.set_precision(geometry, 0.01))
+    result['metadata']['moved'] = result['metadata'].get('moved', 0) + moved
+    return moved
+
+
 def apply_counts(plan, result):
     """Количества в план — по итогам рассадки (их определяет алгоритм, а не LLM): у посадки quantity и unit."""
     placed = {(s['structure'], s['index']): s for s in result['metadata']['plantings']}
@@ -788,10 +851,10 @@ def apply_counts(plan, result):
             unit = s['unit'] if s else item.get('unit', 'шт')
             value = s['placed'] if s else 0
             item['unit'], item['quantity'] = unit, (int(value) if unit == 'шт' else round(float(value), 1))
+            # пометки прежней рассадки снимаются: план мог прийти из прошлой версии (пересчёт по параметрам)
+            item['warnings'] = [w for w in item.get('warnings', []) if w not in AUTO_NOTES]
             if not value:
-                note = (s or {}).get('note') or ('Рассадка не нашла места: зона уже занята другими посадками '
-                                                 'и существующими деревьями с нужными просветами.')
-                item['warnings'] = [w for w in item.get('warnings', []) if w != note] + [note]
+                item['warnings'].append((s or {}).get('note') or NOT_FOUND_NOTE)
     return plan
 
 

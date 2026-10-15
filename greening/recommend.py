@@ -144,6 +144,25 @@ SYSTEM_TYPE = """Ты ландшафтный архитектор, проект�
 {"classes":[{"class":"c1","plantings":[{"plant_ids":["Д032","Д011"],"role":"солитер|группа|рядовая посадка|живая изгородь|куртина|цветник|газон","reason":"почему этот приём и эти виды здесь"}],"place":"что это за места","decision":"что здесь и почему, 1–3 предложения"}],"justification":"замысел для всех структур этого типа, 4–6 предложений"}"""
 
 
+# пожелания пользователя к подбору (редактирование результата, уровень 1): блок в конце запроса.
+# Код всё равно проверяет ответ (_check): вид из справочника, группа разрешена в зоне, свойства — пожелание
+# не может вывести посадку за нормы, даже если просит об этом.
+PREFERENCES_MAX = 2000
+PREFERENCES = """
+
+Пожелания заказчика к подбору растений (текст пользователя, между <<< и >>>):
+<<<
+{text}
+>>>
+Учти пожелания при выборе видов и приёмов посадки, если они не противоречат правилам выше, нормам и условиям зон: правила, нормы и свойства справочника важнее пожеланий. Растения — только из справочника. В "justification" одним-двумя предложениями скажи, как учтены пожелания, а что учесть нельзя и почему."""
+
+
+def preferences_block(text):
+    """Блок пожеланий для запроса или '' (нет пожеланий)."""
+    text = (text or '').strip()[:PREFERENCES_MAX]
+    return PREFERENCES.format(text=text.replace('>>>', '> > >')) if text else ''
+
+
 ENV_KEYS = ('BASE_URL', 'API_KEY', 'LLM_MODEL', 'SUB_BASE_URL', 'SUB_API_KEY', 'SUB_MODEL')
 
 
@@ -911,9 +930,9 @@ def _chosen_type(answer):
     return CHOSEN_TYPE.format(names=', '.join(names)) if names else ''
 
 
-def ask_type(llm, kind, members, classes, plants, log=print):
+def ask_type(llm, kind, members, classes, plants, log=print, preferences=None):
     """Решения по классам мест одного типа; крупный тип — частями, пропущенные классы — дозапросом."""
-    text = type_prompt(kind, members, classes, plants)
+    text = type_prompt(kind, members, classes, plants) + preferences_block(preferences)
     wanted = [c['id'] for c in classes]
     answer = {}
     for attempt in range(math.ceil(len(wanted) / CLASSES_PER_REQUEST) + FOLLOW_UPS):
@@ -1001,8 +1020,9 @@ def _from_classes(structure, index, classes, answer, plants):
     return {'plantings': plantings, 'zones': zones, 'justification': f'{common} {note}'.strip()}
 
 
-def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
+def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None, preferences=None):
     """progress(готово, всего) — после каждой структуры, отправленной в LLM.
+    preferences — пожелания пользователя к подбору растений (текст): уходят в каждый запрос к LLM.
 
     llm=None — подбор правилами (rules.py) для всех структур; если LLM не ответила по структуре,
     для неё тоже работают правила, а ошибка остаётся в записи (llm_error)."""
@@ -1018,7 +1038,7 @@ def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
     def run(structure):
         if llm is None:
             return [(structure, rules.answer(structure, plants), None)]
-        text = prompt(structure, plants)
+        text = prompt(structure, plants) + preferences_block(preferences)
         wanted = _missing({}, structure)
         try:
             first = text if len(wanted) <= ZONES_PER_REQUEST else \
@@ -1042,7 +1062,7 @@ def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
     def run_type(kind, members):
         classes = _classes(members)
         try:
-            answer = ask_type(llm, kind, members, classes, plants, log)
+            answer = ask_type(llm, kind, members, classes, plants, log, preferences)
         except RuntimeError as exc:
             log(f"{TYPES[kind][0]}: {exc} — подбор правилами")
             return [(s, rules.answer(s, plants), str(exc)) for s in members]
@@ -1127,8 +1147,14 @@ def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None):
             record['unexplained_zones'] = missing
         output.append(record)
     zones = [z for r in output for z in r['zones']]
+    wishes = (preferences or '').strip()[:PREFERENCES_MAX]
+    extra = {}
+    if wishes:
+        extra['preferences'] = wishes
+        if llm is None:
+            extra['preferences_note'] = 'Пожелания не учтены: растения подобраны правилами, без LLM.'
     # название модели в результат не пишется (решение пользователя): прокси подставляет разные модели
-    return {'source': 'llm' if llm is not None else 'rules', 'structures': output,
+    return {'source': 'llm' if llm is not None else 'rules', **extra, 'structures': output,
             'summary': {'structures': len(found), 'asked': len(asked),
                         'requests': llm.requests if llm is not None else 0,
                         'by_type': sum(v == 'type' for v in scope.values()),

@@ -1,4 +1,6 @@
+import json
 import logging
+import math
 from pathlib import Path
 
 from django.conf import settings
@@ -9,7 +11,9 @@ from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST
 
 from . import jobs
-from .forms import DxfUploadForm, ProcessUploadForm
+from greening import params as placement_params
+
+from .forms import DxfUploadForm, ProcessUploadForm, ReviseForm
 from .rendering import RenderError, render_svg
 
 logger = logging.getLogger(__name__)
@@ -71,9 +75,92 @@ def upload(request):
         upload.seek(0)
         files[name] = (upload.name, upload.read())
 
-    job_id = jobs.start(files)
+    job_id = jobs.start(files, form.cleaned_data.get('preferences') or None)
     dxf = form.cleaned_data['file']
     return JsonResponse({'job': job_id, 'name': dxf.name, 'size': dxf.size}, status=202)
+
+
+@require_POST
+def job_revise(request, job_id):
+    """Пересчёт готового результата: новая задача-версия, разметка не повторяется. preferences — пожелания
+    к растениям (заново подбор LLM), params — параметры рассадки {ключ: значение} (GET /params/; без новых
+    пожеланий LLM не вызывается). Формой (params — JSON-строкой) или JSON-телом; ответ — как у /upload/, плюс parent."""
+    data = request.POST
+    if request.content_type == 'application/json':
+        try:
+            data = json.loads(request.body or b'{}')
+        except ValueError:
+            return JsonResponse({'errors': {'body': ['Тело запроса — не JSON.']}}, status=400)
+    # нет поля — пожелания прежние; пустое поле — пожелания сняты
+    given = 'preferences' in data
+    form = ReviseForm({'preferences': data.get('preferences') or ''})
+    if not form.is_valid():
+        return JsonResponse({'errors': form.errors}, status=400)
+    raw = data.get('params') or {}
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return JsonResponse({'errors': {'params': ['Параметры — не JSON.']}}, status=400)
+    if not isinstance(raw, dict):
+        return JsonResponse({'errors': {'params': ['Параметры — объект {ключ: значение}.']}}, status=400)
+    try:
+        chosen = placement_params.clean(raw)
+    except placement_params.ParamError as exc:
+        return JsonResponse({'errors': {f'params.{k}': [v] for k, v in exc.errors.items()}}, status=400)
+    if not given and not chosen:
+        return JsonResponse({'errors': {'preferences': ['Напишите пожелания к растениям или измените параметры рассадки.']}},
+                            status=400)
+    state = jobs.status(job_id)
+    if state is None:
+        raise Http404('Нет такой задачи')
+    if state.get('state') != 'done':
+        return JsonResponse({'errors': {'job': ['Исходная задача ещё не готова.']}}, status=409)
+    new_id = jobs.revise(job_id, form.cleaned_data['preferences'] if given else None, chosen)
+    return JsonResponse({'job': new_id, 'name': state.get('name'), 'size': state.get('size'), 'parent': job_id},
+                        status=202)
+
+
+# перемещений за раз не больше — защита от случайно огромного запроса
+MOVES_MAX = 100000
+
+
+@require_POST
+def job_move(request, job_id):
+    """Перемещения растений (редактирование, уровень 3): JSON {"moves": [{"id": "R00012", "x": …, "y": …}]}
+    в координатах чертежа. Новая задача-версия: растения там, куда передвинули; рассадка не пересчитывается."""
+    try:
+        data = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'errors': {'body': ['Тело запроса — не JSON.']}}, status=400)
+    raw = data.get('moves') if isinstance(data, dict) else None
+    if not isinstance(raw, list) or not raw:
+        return JsonResponse({'errors': {'moves': ['Нет перемещений.']}}, status=400)
+    if len(raw) > MOVES_MAX:
+        return JsonResponse({'errors': {'moves': [f'Не больше {MOVES_MAX} перемещений за раз.']}}, status=400)
+    moves = {}
+    for item in raw:
+        try:
+            pid, x, y = str(item['id']), float(item['x']), float(item['y'])
+        except (KeyError, TypeError, ValueError):
+            return JsonResponse({'errors': {'moves': ['Перемещение — {"id": "R…", "x": число, "y": число}.']}}, status=400)
+        if not (math.isfinite(x) and math.isfinite(y)) or not pid.startswith('R'):
+            return JsonResponse({'errors': {'moves': [f'Неверное перемещение {pid}.']}}, status=400)
+        moves[pid] = (x, y)
+    state = jobs.status(job_id)
+    if state is None:
+        raise Http404('Нет такой задачи')
+    if state.get('state') != 'done':
+        return JsonResponse({'errors': {'job': ['Исходная задача ещё не готова.']}}, status=409)
+    new_id = jobs.move(job_id, moves)
+    return JsonResponse({'job': new_id, 'name': state.get('name'), 'size': state.get('size'), 'parent': job_id},
+                        status=202)
+
+
+@require_GET
+def params_schema(request):
+    """Параметры рассадки для формы редактирования: группы, ключи, пределы, значения по умолчанию."""
+    return JsonResponse(placement_params.schema(default_placement=settings.GREENING_PLACEMENT))
 
 
 @require_GET
