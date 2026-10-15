@@ -180,7 +180,7 @@
         };
     }
 
-    // зерно — счётчик с кнопками и кубиком
+    // seed — счётчик с кнопками и кубиком
     function stepper(spec, row) {
         const box = html('div', 'ed-stepper', row);
         const minus = html('button', null, box, '−');

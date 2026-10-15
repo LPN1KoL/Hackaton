@@ -314,9 +314,12 @@ class Placer:
         sizes = []
         while count > 0:
             size = int(self.rng.choice(options))
-            size = min(size, count)
-            if size % 2 == 0 and size > 1:
-                size -= 1                  # нечётные группы смотрятся естественнее
+            if size > count:
+                # остаток меньше выбранного размера — нечётным: так группа смотрится естественнее;
+                # сам выбранный размер (параметр рассадки) соблюдается, даже чётный
+                size = count
+                if size % 2 == 0 and size > 1:
+                    size -= 1
             sizes.append(max(size, 1))
             count -= sizes[-1]
         return sizes

@@ -6,7 +6,7 @@
 
 mode — в каком режиме рассадки параметр действует: both — в обоих (каркас рассадки общий: зоны, правила
 расстояний, группы, изгороди, бюджет кустов), model — только при выборе мест моделью, algorithm — только
-эвристикой. Режим и зерно — тоже параметры (placement, seed).
+эвристикой. Режим и seed — тоже параметры (placement, seed).
 """
 
 import copy
@@ -30,7 +30,7 @@ SPEC = [
      'choices': [['algorithm', 'алгоритм'], ['model', 'модель']],
      'title': 'Места посадки', 'help': 'Кто выбирает точки среди разрешённых нормами: эвристика или обученная модель'},
     {'key': 'seed', 'group': 'mode', 'kind': 'int', 'path': None, 'mode': 'both', 'default': 0, 'min': 0, 'max': 999999,
-     'title': 'Вариант (зерно)', 'help': 'Другое число — другой вариант рассадки при тех же параметрах'},
+     'title': 'Seed', 'help': 'Число, от которого зависят случайные решения рассадки: тот же seed — тот же результат, другой — другой вариант при тех же параметрах'},
 
     {'key': 'shrub_share', 'group': 'density', 'kind': 'float', 'path': ['shrub_share'], 'mode': 'both',
      'min': 0.4, 'max': 1.5, 'step': 0.05, 'unit': '× кроны',
@@ -55,13 +55,13 @@ SPEC = [
      'title': 'Зазор между группами кустов', 'help': 'Край кроны к краю кроны: меньше — группы сливаются'},
 
     {'key': 'group_sizes_small', 'group': 'groups', 'kind': 'sizes', 'path': ['group_sizes', 'small'], 'mode': 'both',
-     'min': 1, 'max': 25, 'title': 'Группы мелких кустов (крона < 1,5 м)', 'help': 'Варианты числа кустов через запятую'},
+     'min': 1, 'max': 25, 'title': 'Количество в группах: мелкие кусты (крона < 1,5 м)', 'help': 'Сколько растений в одной группе: рассадка выбирает из отмеченных; нечётные смотрятся естественнее'},
     {'key': 'group_sizes_medium', 'group': 'groups', 'kind': 'sizes', 'path': ['group_sizes', 'medium'], 'mode': 'both',
-     'min': 1, 'max': 25, 'title': 'Группы средних кустов (1,5–3 м)', 'help': 'Варианты числа кустов через запятую'},
+     'min': 1, 'max': 25, 'title': 'Количество в группах: средние кусты (крона 1,5–3 м)', 'help': 'Сколько растений в одной группе: рассадка выбирает из отмеченных; нечётные смотрятся естественнее'},
     {'key': 'group_sizes_large', 'group': 'groups', 'kind': 'sizes', 'path': ['group_sizes', 'large'], 'mode': 'both',
-     'min': 1, 'max': 25, 'title': 'Группы крупных кустов (> 3 м)', 'help': 'Варианты числа кустов через запятую'},
+     'min': 1, 'max': 25, 'title': 'Количество в группах: крупные кусты (крона > 3 м)', 'help': 'Сколько растений в одной группе: рассадка выбирает из отмеченных; нечётные смотрятся естественнее'},
     {'key': 'group_sizes_tree', 'group': 'groups', 'kind': 'sizes', 'path': ['group_sizes', 'tree'], 'mode': 'both',
-     'min': 1, 'max': 15, 'title': 'Группы деревьев', 'help': 'Варианты числа деревьев через запятую'},
+     'min': 1, 'max': 15, 'title': 'Количество в группах: деревья', 'help': 'Сколько растений в одной группе: рассадка выбирает из отмеченных; нечётные смотрятся естественнее'},
     {'key': 'drift_landscape', 'group': 'groups', 'kind': 'float', 'path': ['drift_share', 'landscape'], 'mode': 'both',
      'min': 0, 'max': 1, 'step': 0.05, 'title': 'Вытянутые куртины (пейзажный стиль)',
      'help': 'Доля групп от 5 растений, вытянутых вдоль края, — остальные компактные'},
@@ -215,7 +215,7 @@ def clean(overrides):
 
 
 def apply(overrides, config=None):
-    """(config рассадки с параметрами, режим или None, зерно или None). overrides — уже проверенные (clean)."""
+    """(config рассадки с параметрами, режим или None, seed или None). overrides — уже проверенные (clean)."""
     config = copy.deepcopy(config or place.load_config())
     for key, value in overrides.items():
         spec = BY_KEY[key]
@@ -231,7 +231,7 @@ def changed(overrides, config=None):
     for key, value in overrides.items():
         spec = BY_KEY[key]
         default = _get(config, spec['path']) if spec['path'] is not None else None
-        # режим — всегда (показывается отдельно), зерно — если не 0
+        # режим — всегда (показывается отдельно), seed — если не 0
         if (key == 'placement') or (key == 'seed' and value) or (spec['path'] is not None and value != default):
             out[key] = value
     return out

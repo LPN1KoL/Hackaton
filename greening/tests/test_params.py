@@ -126,3 +126,12 @@ class Moves(unittest.TestCase):
         outline = shape(result['features'][3]['geometry'])
         self.assertTrue(outline.covers(Point(4, 0)) and outline.covers(Point(0, 0)))
         self.assertFalse(outline.covers(Point(1, 0)))
+
+
+class EvenSizes(unittest.TestCase):
+    def test_even_size_kept(self):
+        config, _, _ = params.apply(params.clean({'group_sizes_small': '4'}))
+        p = place.Placer(config, [], np.random.default_rng(0), None)
+        self.assertEqual(p._sizes(8, 'shrub', 1.0), [4, 4])
+        # остаток меньше выбранного размера — нечётный
+        self.assertEqual(p._sizes(6, 'shrub', 1.0), [4, 1, 1])
