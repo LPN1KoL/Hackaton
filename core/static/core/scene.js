@@ -786,31 +786,6 @@ function buildBuildings() {
         scene.add(mesh);
     }
 }
-// фигуры людей на тротуарах — для масштаба
-function buildPeople() {
-    const rand = rng(777);
-    const polys = [].concat(data.surfaces.sidewalk || [], data.surfaces.paving || []);
-    let area = 0;
-    for (const rings of polys) area += polyArea(rings[0]);
-    const count = Math.min(160, Math.round(area / 220));
-    if (!count) return;
-    const pts = sample(polys, count / Math.max(area, 1), rand).slice(0, count);
-    const body = new THREE.CapsuleGeometry(0.19, 0.95, 3, 8);
-    body.translate(0, 0.72, 0);
-    const head = new THREE.SphereGeometry(0.115, 10, 8);
-    head.translate(0, 1.6, 0);
-    const geo = mergeGeometries([body, head]);
-    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.8 }), pts.length);
-    const colors = ['#3b4a5e', '#7a3b3b', '#d8d2c4', '#2f2f33', '#5b6e4a', '#a8743a', '#46607e', '#8c8c8c'];
-    pts.forEach(function ([x, y], i) {
-        const s = 0.9 + rand() * 0.2;
-        mesh.setMatrixAt(i, m4.compose(vp.set(x, 0.15, -y), q.setFromAxisAngle(up, rand() * 6.28), vs.set(s, s, s)));
-        mesh.setColorAt(i, tmp.set(colors[Math.floor(rand() * colors.length)]));
-    });
-    mesh.castShadow = true;
-    scene.add(mesh);
-}
-
 // --- небо, солнце, тени ----------------------------------------------------------------------------------------
 const TIMES = {
     morning: { el: 14, az: 105, color: '#ffd9b0', sun: 2.4, turbidity: 8, rayleigh: 2.2, fog: '#d9d5cf', exposure: 0.62 },
@@ -1313,7 +1288,6 @@ function setup() {
     buildBuildings();
     buildBeds();
     buildPlants();
-    buildPeople();
 
     composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
     composer.addPass(new RenderPass(scene, camera));

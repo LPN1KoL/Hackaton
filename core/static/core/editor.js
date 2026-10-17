@@ -344,7 +344,7 @@
         (D.groups || []).forEach(function (g) {
             const node = el('path', { d: g.d, 'class': 'v-group ed-group', 'fill-rule': 'evenodd' }, groupLayer);
             node.dataset.gid = g.gid;
-            el('title', {}, node).textContent = g.t + ' — перетащите, чтобы сдвинуть группу';
+            el('title', {}, node).textContent = g.t + ' — перетащите, чтобы сдвинуть группу; с Shift — повернуть';
             if (g.gid != null) outlines[g.gid] = { node: node, dx: 0, dy: 0 };
         });
         const plantLayer = layer('ed-plants');
@@ -402,13 +402,42 @@
             const o = outlines[gid];
             if (!o) return;
             const members = plants.filter(function (p) { return p.gid === gid; });
-            // контур сдвигается вместе с группой; растения группы, сдвинутые по одному, контур не тянут
-            const first = members[0];
-            const together = members.every(function (p) {
-                return Math.abs((p.x - p.x0) - (first.x - first.x0)) < 0.01 && Math.abs((p.y - p.y0) - (first.y - first.y0)) < 0.01;
-            });
-            o.node.classList.toggle('is-broken', !together);
-            if (together) o.node.setAttribute('transform', 'translate(' + (first.x - first.x0) + ' ' + (first.y - first.y0) + ')');
+            // контур сдвигается и поворачивается вместе с группой; растения группы, сдвинутые по одному, контур не тянут
+            const m = motion(members);
+            o.node.classList.toggle('is-broken', !m);
+            if (m) o.node.setAttribute('transform', 'translate(' + m.nx + ' ' + m.ny + ') rotate(' + m.deg + ') translate(' + (-m.ox) + ' ' + (-m.oy) + ')');
+        });
+    }
+
+    // сдвиг с поворотом от исходных мест к нынешним (по центрам, наименьшие квадраты), как place._rigid на сервере;
+    // null — растения сдвинуты не как одно целое
+    function motion(members) {
+        const n = members.length;
+        let ox = 0, oy = 0, nx = 0, ny = 0, cross = 0, dot = 0;
+        members.forEach(function (p) { ox += p.x0; oy += p.y0; nx += p.x; ny += p.y; });
+        ox /= n; oy /= n; nx /= n; ny /= n;
+        members.forEach(function (p) {
+            const a = p.x0 - ox, b = p.y0 - oy, c = p.x - nx, d = p.y - ny;
+            cross += a * d - b * c;
+            dot += a * c + b * d;
+        });
+        const angle = n > 1 ? Math.atan2(cross, dot) : 0;
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        const rigid = members.every(function (p) {
+            const a = p.x0 - ox, b = p.y0 - oy;
+            return Math.hypot(a * cos - b * sin + nx - p.x, a * sin + b * cos + ny - p.y) < 0.02;
+        });
+        return rigid ? { deg: angle * 180 / Math.PI, ox: ox, oy: oy, nx: nx, ny: ny } : null;
+    }
+
+    function rotate(list, cx, cy, angle) {
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        list.forEach(function (p) {
+            const dx = p.x - cx, dy = p.y - cy;
+            p.x = cx + dx * cos - dy * sin;
+            p.y = cy + dx * sin + dy * cos;
+            p.node.setAttribute('cx', p.x);
+            p.node.setAttribute('cy', p.y);
         });
     }
 
@@ -424,16 +453,25 @@
     svg.addEventListener('pointerdown', function (e) {
         const target = e.target;
         const at = toMap(e);
+        const turn = mode === 'rotate' || e.shiftKey;
         let list = null;
         if (target.classList.contains('ed-plant')) {
             const p = plants[+target.dataset.n];
-            list = mode === 'group' && p.gid != null ? plants.filter(function (q) { return q.gid === p.gid; }) : [p];
+            list = (mode !== 'plant' || turn) && p.gid != null ? plants.filter(function (q) { return q.gid === p.gid; }) : [p];
         } else if (target.classList.contains('ed-group')) {
             const gid = +target.dataset.gid;
             list = plants.filter(function (q) { return q.gid === gid; });
         }
         if (list && list.length) {
             drag = { kind: 'move', list: list, x: at.x, y: at.y, before: list.map(function (p) { return { plant: p, x: p.x, y: p.y }; }) };
+            // поворот — вокруг центра группы, на угол, на который мышь обошла его; одно растение поворачивать незачем
+            if (turn && list.length > 1) {
+                drag.kind = 'rotate';
+                drag.cx = list.reduce(function (s, p) { return s + p.x; }, 0) / list.length;
+                drag.cy = list.reduce(function (s, p) { return s + p.y; }, 0) / list.length;
+                drag.a = Math.atan2(at.y - drag.cy, at.x - drag.cx);
+                svg.classList.add('is-rotating');
+            }
             list.forEach(function (p) { p.node.classList.add('is-drag'); });
         } else {
             drag = { kind: 'pan', cx: e.clientX, cy: e.clientY, v: view.slice() };
@@ -451,22 +489,28 @@
             return;
         }
         const at = toMap(e);
-        shift(drag.list, at.x - drag.x, at.y - drag.y);
-        drag.x = at.x;
-        drag.y = at.y;
+        if (drag.kind === 'rotate') {
+            const a = Math.atan2(at.y - drag.cy, at.x - drag.cx);
+            rotate(drag.list, drag.cx, drag.cy, a - drag.a);
+            drag.a = a;
+        } else {
+            shift(drag.list, at.x - drag.x, at.y - drag.y);
+            drag.x = at.x;
+            drag.y = at.y;
+        }
         syncOutlines(new Set(drag.list.map(function (p) { return p.gid; })));
     });
 
     function stop() {
         if (!drag) return;
-        if (drag.kind === 'move') {
+        if (drag.list) {
             drag.list.forEach(function (p) { p.node.classList.remove('is-drag'); });
             const changed = drag.before.some(function (b) { return b.plant.x !== b.x || b.plant.y !== b.y; });
             if (changed) history.push(drag.before);
             update(drag.list);
         }
         drag = null;
-        svg.classList.remove('is-dragging');
+        svg.classList.remove('is-dragging', 'is-rotating');
     }
     svg.addEventListener('pointerup', stop);
     svg.addEventListener('pointercancel', stop);
@@ -474,6 +518,7 @@
     root.querySelectorAll('.ed-mode button').forEach(function (b) {
         b.addEventListener('click', function () {
             mode = b.dataset.mode;
+            svg.classList.toggle('is-rotate', mode === 'rotate');
             root.querySelectorAll('.ed-mode button').forEach(function (x) { x.classList.toggle('is-on', x === b); });
         });
     });

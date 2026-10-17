@@ -108,7 +108,7 @@ def _settings():
                 limit=settings.GREENING_LLM_LIMIT, use_llm=settings.GREENING_LLM, placement=settings.GREENING_PLACEMENT)
 
 
-def start(files, preferences=None, placement='algorithm'):
+def start(files, preferences=None, placement='model'):
     """files: {'file': (имя, байты), 'geobase': (имя, байты)?}; preferences — пожелания к подбору растений;
     placement — режим рассадки со стартовой страницы (algorithm | model), версии наследуют его в params.
     Возвращает номер задачи."""

@@ -35,7 +35,8 @@ from pathlib import Path
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
-from . import annotate, clearance, export, params as placement_params, parse, place, recommend, sections, view as view_data
+from . import annotate, clearance, export, params as placement_params, parse, place, recommend, sections, variety
+from . import view as view_data
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +166,8 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
     report('placement')
     chosen = placement_params.clean(params or {})
     config, mode, chosen_seed = placement_params.apply(chosen)
+    # спутники посадок (миксбордер, второй вид смешанных групп) — по параметрам рассадки, без LLM
+    variety.compose(plan, config)
     placement_mode = mode or placement
     seed = seed if chosen_seed is None else chosen_seed
     placement = place.place(geojson, plan, seed, config=config, mode=placement_mode, log=logger.info)

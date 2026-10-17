@@ -23,12 +23,12 @@
                     <legend class="field-label">Как расставлять растения</legend>
                     <div class="mode-options">
                         <label class="mode-option">
-                            <input type="radio" name="placement" value="algorithm" checked>
-                            <span><b>Алгоритм</b><small>Правила композиции: группы, ряды вдоль дорожек, солитеры на открытых местах</small></span>
+                            <input type="radio" name="placement" value="model" checked>
+                            <span><b>Модель</b><small>Места выбирает модель, обученная на проектах озеленения; нормы те же</small></span>
                         </label>
                         <label class="mode-option">
-                            <input type="radio" name="placement" value="model">
-                            <span><b>Модель</b><small>Места выбирает модель, обученная на проектах озеленения; нормы те же</small></span>
+                            <input type="radio" name="placement" value="algorithm">
+                            <span><b>Алгоритм</b><small>Правила композиции: группы, ряды вдоль дорожек, солитеры на открытых местах</small></span>
                         </label>
                     </div>
                 </fieldset>
@@ -229,9 +229,10 @@
                 <h2>Что двигать</h2>
                 <div class="ed-segments ed-mode">
                     <button type="button" data-mode="plant" class="is-on">растение</button>
-                    <button type="button" data-mode="group">группу целиком</button>
+                    <button type="button" data-mode="group">группу</button>
+                    <button type="button" data-mode="rotate">повернуть группу</button>
                 </div>
-                <p class="ed-note">Перетаскивайте растение мышью; контур группы — всю группу. Колесо — масштаб, перетаскивание фона — сдвиг карты.</p>
+                <p class="ed-note">Перетаскивайте растение мышью; контур группы — всю группу. Повернуть группу — режим «повернуть группу» или перетаскивание с зажатым Shift: группа вращается вокруг своего центра. Колесо — масштаб, перетаскивание фона — сдвиг карты.</p>
                 <dl class="ed-stats">
                     <dt>Перемещено</dt><dd data-stat="moved">0</dd>
                     <dt>Вне зон, где вид разрешён</dt><dd data-stat="outside">0</dd>

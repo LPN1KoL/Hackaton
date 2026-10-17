@@ -31,6 +31,10 @@ FACTS = {
     'ин': 'склонен к распространению: посадка с контролем, не на ООЗТ и природных территориях (п. 5 ПП Москвы № 369-ПП)',
     'уо': 'требует особого ухода: защита корней, дождевание кроны весной у дорог, мульчирование, рыхление',
 }
+# сезонные свойства справочника (из правил вида 3D-сцены, config/scene.json — справочные, не из НПА)
+SEASON_FACTS = (('вц', 'цветёт весной', 'весна'), ('лц', 'цветёт летом', 'лето'), ('оц', 'цветёт осенью', 'осень'),
+                ('ол', 'яркая осенняя листва', 'осень'), ('пд', 'декоративные плоды', 'осень'),
+                ('зд', 'декоративен зимой', 'зима'))
 HERBACEOUS_SOURCE = {'Г': 'Посев газонов предусмотрен 743-ПП'}
 LIGHT = (('с', 'солнце'), ('п', 'полутень'), ('т', 'тень'))
 # текст LLM → свойство справочника, которое этот текст утверждает или отрицает
@@ -121,12 +125,21 @@ def facts(plant):
     light = [word for flag, word in LIGHT if flag in plant['flags']]
     if light:
         result.append('свет: ' + ', '.join(light))
+    season = [text for flag, text, _ in SEASON_FACTS if flag in plant['flags']]
+    if season:
+        result.append('по сезонам: ' + ', '.join(season))
     for flag in sorted(plant['flags']):
         if flag.startswith('h'):
             result.append(f'высота до {flag[1:]} м')
         elif flag.startswith('к') and flag[1:].isdigit():
             result.append(f'крона до {flag[1:]} м')
     return result
+
+
+def seasons(plant):
+    """Сезоны, в которые растение декоративно по справочнику: ['весна', 'осень', …] по порядку года."""
+    found = {season for flag, _, season in SEASON_FACTS if flag in plant['flags']}
+    return [s for s in ('весна', 'лето', 'осень', 'зима') if s in found]
 
 
 def warnings(reason, plant):

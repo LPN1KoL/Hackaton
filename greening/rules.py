@@ -18,6 +18,8 @@ from . import justify
 
 GROUPS = {'tree': ('ДЛ', 'ДХ'), 'shrub': ('КЛ', 'КХ'), 'perennial': ('М',)}
 LAWN, SHADE_LAWN = 'Т001', 'Т002'
+# луговой газон — в глубине крупного открытого газона сквера или парковой части, обыкновенный остаётся у дорожек
+MEADOW, MEADOW_MIN_M2, MEADOW_TYPES = 'Т053', 300.0, ('square', 'lawn')
 SHADE_TAGS = ('existing_trees', 'near_building')
 GROUND_TAGS = ('near_playground', 'near_sport_ground')
 # минимальная зона, где вид посадки вообще назначается, м²
@@ -120,6 +122,13 @@ def answer(structure, plants):
             plantings.append({'zone': zone['id'], 'plant_id': lawn['id'], 'role': 'газон', 'unit': 'м2',
                               'reason': 'Газон на свободной части зоны' + (' — теневыносливый: место в тени' if shade else '') + '.'})
             placed.append(lawn['name'].split(' (')[0].lower())
+            if (not shade and structure.get('type') in MEADOW_TYPES and zone['area_m2'] >= MEADOW_MIN_M2
+                    and not zone.get('near_ground') and 'roadside' not in zone['tags'] and MEADOW in by_id):
+                plantings.append({'zone': zone['id'], 'plant_id': MEADOW, 'role': 'газон', 'unit': 'м2',
+                                  'reason': 'Луговой газон в глубине крупного открытого газона: косится 2–3 раза за лето '
+                                            'вместо еженедельной стрижки, разнотравье поддерживает опылителей; '
+                                            'вдоль дорожек остаётся полоса обыкновенного газона.'})
+                placed.append('луговой газон в глубине')
         if placed:
             decision = 'Посадки подобраны правилами: ' + ', '.join(placed) + '.'
         elif zone.get('empty_reason'):

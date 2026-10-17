@@ -973,6 +973,9 @@ body.has-viewer { overflow: hidden; }
 .vw-more:hover { text-decoration: underline; }
 .vw-more[hidden] { display: none; }
 .vw-note { margin-top: 10px !important; padding: 8px 10px; border-left: 3px solid #e0a64a; border-radius: 4px; background: #fdf6ea; font-size: 12px; }
+.vw-seasons { display: grid; gap: 4px; font-size: 12px; }
+.vw-seasons > div { display: grid; grid-template-columns: 56px 1fr; gap: 8px; }
+.vw-seasons b { font-weight: 600; }
 .vw-tip { margin-top: 14px !important; padding: 8px 10px; border-radius: 10px; background: #f6f6f4; color: var(--muted); font-size: 12px; }
 
 .vw-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
@@ -1115,6 +1118,7 @@ body.has-viewer { overflow: hidden; }
 .ed-map svg { cursor: grab; }
 .ed-plant { cursor: move; }
 .ed-group { cursor: move; }
+.ed-map svg.is-rotate .ed-plant, .ed-map svg.is-rotate .ed-group, .ed-map svg.is-rotating { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23fff' stroke-width='4'%3E%3Cpath d='M20 12a8 8 0 1 1-2.34-5.66'/%3E%3Cpath d='M20 4v4h-4'/%3E%3C/g%3E%3Cg stroke='%23222' stroke-width='2'%3E%3Cpath d='M20 12a8 8 0 1 1-2.34-5.66'/%3E%3Cpath d='M20 4v4h-4'/%3E%3C/g%3E%3C/svg%3E") 12 12, crosshair; }
 .ed-group.is-broken { stroke-dasharray: 3 3; fill-opacity: 0.12; }
 .ed-zone { cursor: inherit; fill-opacity: 0.35; }
 .ed-static { pointer-events: none; }

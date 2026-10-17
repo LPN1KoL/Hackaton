@@ -18,6 +18,7 @@ SURFACES = ('roadway', 'sidewalk', 'paving', 'sealed', 'gravel', 'playground', '
 PLANTING_WORDS = {'tree': 'деревья', 'shrub': 'кустарники'}
 # радиус точки посадочного места куста в группе на карте, м
 GROUP_SPOT = 0.25
+SEASONS = ('весна', 'лето', 'осень', 'зима')
 
 
 def _path(geometry):
@@ -109,6 +110,7 @@ def build(geojson, plan=None, placement=None):
                 + (f" — {item['quantity']} {item.get('unit', '')}".rstrip() if item.get('quantity') is not None else ''))
             # полное объяснение посадки: текст LLM (reason) и то, что пишет код (norms, facts, warnings)
             details.append({'i': number, 'zone': item['zone'], 'name': item.get('name', item.get('plant_id')),
+                            'plant_id': item.get('plant_id'),
                             'group': item.get('group'), 'role': item.get('role'), 'quantity': item.get('quantity'),
                             'unit': item.get('unit'), 'reason': item.get('reason', ''), 'norms': item.get('norms', []),
                             'facts': item.get('facts', []), 'warnings': item.get('warnings', []),
@@ -164,6 +166,18 @@ def build(geojson, plan=None, placement=None):
         else:
             data['beds' if p['layer'] == 'bed' else 'lawns'].append(
                 {'d': _path(g), 't': f"{p['name']}: {p['area_m2']} м²", 's': sid, 'i': number})
+    # что украшает структуру в каждый сезон — по посаженному и сезонным свойствам справочника
+    flags = {p['id']: p for p in catalog.load()}
+    for s in data['structures']:
+        seasons = {season: [] for season in SEASONS}
+        for item in s['plantings']:
+            plant = flags.get(item.get('plant_id'))
+            if plant is None or not item['placed']:
+                continue
+            for season in justify.seasons(plant):
+                if item['name'] not in seasons[season]:
+                    seasons[season].append(item['name'])
+        s['seasons'] = seasons if any(seasons.values()) else {}
     return data
 
 
@@ -194,6 +208,7 @@ def report(data, plan):
             'структура': s['id'], 'название': s['name'], 'место': s['place'],
             'всего_м2': s['total'], 'газоны_м2': s['area'], 'состав': s['composition'],
             'существующих_деревьев': s['trees'], 'замысел': s['justification'],
+            'по_сезонам': s.get('seasons', {}),
             'посадки': [{
                 'зона': p['zone'], 'растение': p['name'], 'группа': GROUP_NAMES.get(p['group'], p['group']),
                 'приём': p['role'], 'количество': p['placed'], 'единица': 'шт' if p['unit'] == 'шт' else 'м²',

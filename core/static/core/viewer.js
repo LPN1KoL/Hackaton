@@ -449,8 +449,18 @@
             }).join('') + '</div>' : '') +
             (s.justification ? '<h3 class="vw-h3">Замысел</h3><p class="vw-idea is-clamped">' + esc(s.justification) + '</p>' +
                 '<button type="button" class="vw-more">Читать полностью</button>' : '') +
-            replacedNote(s) +
+            replacedNote(s) + seasonsHtml(s) +
             '<p class="vw-tip">Подробнее — во вкладках: <b>Газоны</b> — что и почему на каждом газоне, <b>Растения</b> — обоснование и нормы по каждому виду.</p>';
+    }
+
+    // чем структура украшена в каждый сезон — по посаженному (сезонные свойства справочника, view.py)
+    function seasonsHtml(s) {
+        if (!s.seasons || !Object.keys(s.seasons).length) return '';
+        return '<h3 class="vw-h3">По сезонам</h3><div class="vw-seasons">' + ['весна', 'лето', 'осень', 'зима'].map(function (k) {
+            const names = s.seasons[k] || [];
+            return '<div><b>' + esc(k[0].toUpperCase() + k.slice(1)) + '</b>' +
+                (names.length ? '<span>' + esc(names.join(', ')) + '</span>' : '<span class="viewer-muted">нет акцента</span>') + '</div>';
+        }).join('') + '</div>';
     }
 
     // замысел LLM написан до проверки норм: если код заменил деревья, об этом — под текстом

@@ -119,6 +119,17 @@ class Moves(unittest.TestCase):
         self.assertNotIn('moved', result['features'][2]['properties'])
         self.assertEqual(result['metadata']['moved'], 2)
 
+    def test_rotated_group_rotates_outline(self):
+        from shapely.geometry import shape
+        result = self.placement()
+        place.apply_moves(result, {'R00001': (3.5, 2.5), 'R00002': (3.5, 3.5)})
+        outline = shape(result['features'][3]['geometry'])
+        minx, miny, maxx, maxy = outline.bounds
+        self.assertAlmostEqual((minx + maxx) / 2, 3.5, places=2)
+        self.assertAlmostEqual((miny + maxy) / 2, 3, places=2)
+        self.assertGreater(maxy - miny, maxx - minx + 0.5)
+        self.assertAlmostEqual(outline.area, 0.9 ** 2 * math.pi / 4 * 2, delta=0.2)
+
     def test_single_member_rebuilds_outline(self):
         from shapely.geometry import shape, Point
         result = self.placement()

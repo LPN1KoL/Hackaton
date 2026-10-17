@@ -185,7 +185,9 @@ class Threshold(unittest.TestCase):
         self.assertEqual(summary['zones_explained'], summary['zones'])
         self.assertEqual(summary['ok'], r.CLASS_MIN_REQUESTS)
         self.assertEqual(summary['usage']['prompt_tokens'], 20)  # расход — один раз на тип
-        trees = {p['plant_id'] for s in plan['structures'] for p in s['plantings'] if p['group'] in r.GROUPS['tree']}
+        # хвойный акцент код добавляет сам (by: rules) — здесь только решения классов
+        trees = {p['plant_id'] for s in plan['structures'] for p in s['plantings']
+                 if p['group'] in r.GROUPS['tree'] and p.get('by') != 'rules'}
         self.assertEqual(trees, {TREE, TREE_2})
 
     def test_large_structure_asked_alone(self):
