@@ -75,6 +75,10 @@
             const c = controls[spec.key];
             c.row.classList.toggle('is-changed', spec.key !== 'placement' && !same(values[spec.key], spec.default));
         });
+        // изменённый параметр из тонкой настройки не прячем
+        paramsBox.querySelectorAll('.ed-more').forEach(function (more) {
+            if (more.querySelector('.ed-param.is-changed')) open(more, true);
+        });
         const mode = values.placement;
         paramsBox.querySelectorAll('[data-group]').forEach(function (g) {
             g.hidden = (g.dataset.group === 'model' && mode !== 'model') || (g.dataset.group === 'algorithm' && mode !== 'algorithm');
@@ -200,6 +204,12 @@
         return function set(value) { input.value = value; };
     }
 
+    // «Тонкая настройка» карточки: плавно раскрывается (высота 0fr → 1fr)
+    function open(more, state) {
+        more.classList.toggle('is-open', state);
+        more.querySelector('.ed-more-toggle').setAttribute('aria-expanded', state ? 'true' : 'false');
+    }
+
     function build() {
         paramsBox.replaceChildren();
         schema.groups.forEach(function (group) {
@@ -209,10 +219,28 @@
             card.dataset.group = group.key;
             const head = html('h3', null, card, group.title);
             if (group.key === 'model' || group.key === 'algorithm') html('span', 'ed-badge', head, 'только ' + (group.key === 'model' ? 'модель' : 'алгоритм'));
-            items.forEach(function (spec) {
-                const row = html('div', 'ed-param', card);
-                const label = html('div', 'ed-label', row, spec.title);
-                label.title = 'Двойной щелчок — значение по умолчанию';
+            if (group.about) html('p', 'ed-about', card, group.about);
+            const advanced = items.filter(function (spec) { return spec.advanced; });
+            let more = null;
+            let moreBody = null;
+            if (advanced.length) {
+                more = html('div', 'ed-more', null);
+                const toggle = html('button', 'ed-more-toggle', more);
+                toggle.type = 'button';
+                toggle.setAttribute('aria-expanded', 'false');
+                html('span', null, toggle, 'Тонкая настройка · ' + advanced.length);
+                toggle.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>');
+                toggle.addEventListener('click', function () { open(more, !more.classList.contains('is-open')); });
+                moreBody = html('div', null, html('div', 'ed-more-body', more));
+            }
+            items.filter(function (spec) { return !spec.advanced; }).concat(advanced).forEach(function (spec) {
+                const row = html('div', 'ed-param', spec.advanced ? moreBody : card);
+                const label = html('div', 'ed-label', row);
+                html('span', null, label, spec.title);
+                const reset = html('button', 'ed-reset', label, '↺');
+                reset.type = 'button';
+                reset.title = 'Вернуть значение по умолчанию';
+                reset.addEventListener('click', function () { setValue(spec.key, spec.default); });
                 label.addEventListener('dblclick', function () { setValue(spec.key, spec.default); });
                 let set;
                 if (spec.kind === 'choice') set = segments(spec, row);
@@ -222,6 +250,7 @@
                 if (spec.help) html('div', 'ed-help', row, spec.help);
                 controls[spec.key] = { set: set, row: row };
             });
+            if (more) card.appendChild(more);
         });
     }
 

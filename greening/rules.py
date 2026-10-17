@@ -34,6 +34,8 @@ def _score(plant, roadside, shade):
     # лиственные — основа городского озеленения; в тени — виды с подтверждённой теневыносливостью
     score += 1 if plant['group'] in ('ДЛ', 'КЛ') else 0
     score += 1 if shade and plant['flags'] & {'п', 'т'} else 0
+    # распространяющиеся виды — с контролем (пометки [1] и [7] ассортимента ДПиООС)
+    score -= 2 if plant['flags'] & {'ин', 'рс'} else 0
     return score
 
 

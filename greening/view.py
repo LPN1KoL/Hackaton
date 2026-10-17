@@ -112,7 +112,9 @@ def build(geojson, plan=None, placement=None):
                             'group': item.get('group'), 'role': item.get('role'), 'quantity': item.get('quantity'),
                             'unit': item.get('unit'), 'reason': item.get('reason', ''), 'norms': item.get('norms', []),
                             'facts': item.get('facts', []), 'warnings': item.get('warnings', []),
-                            'by': item.get('by', 'llm'), 'placed': 0})
+                            'by': item.get('by', 'llm'), 'placed': 0,
+                            **({'replaced': {'name': item['substituted_from'], 'reason': item.get('original_reason', '')}}
+                               if item.get('substituted_from') else {})})
             refs[(structure['id'], item['zone'], item.get('plant_id'), item.get('role'))] = (structure['id'], number)
         zones = []
         for zone in structure['zones']:
@@ -197,6 +199,8 @@ def report(data, plan):
                 'приём': p['role'], 'количество': p['placed'], 'единица': 'шт' if p['unit'] == 'шт' else 'м²',
                 'обоснование': p['reason'], 'нормы': p['norms'], 'свойства': p['facts'],
                 'предупреждения': p['warnings'], 'решено': _decided(p, status),
+                **({'замена': {'предлагалось': p['replaced']['name'], 'обоснование_LLM': p['replaced']['reason']}}
+                   if p.get('replaced') else {}),
             } for p in s['plantings']],
             'зоны': [{
                 'зона': z['id'], 'газон': z['patch'], 'площадь_м2': z['area'], 'можно_сажать': KIND_NAMES[z['kind']],

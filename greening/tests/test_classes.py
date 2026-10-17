@@ -211,3 +211,21 @@ class Threshold(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class WideCrownSubstitute(unittest.TestCase):
+    def test_reason_describes_substitute_not_rejected_tree(self):
+        maple = next(p for p in PLANTS if p['name'] == 'Клен татарский')
+        s = structure('P0001', [zone('z1', building=6.4)], kind='yard')
+        answer = {'plantings': [{'zone': 'z1', 'plant_id': maple['id'], 'role': 'солитер',
+                                 'reason': 'компактный клён татарский безопасен у здания'}]}
+        kept, rejected = r._check(answer, s, PLANTS)
+        self.assertEqual(rejected[0]['replaced_by'], kept[0]['name'])
+        item = kept[0]
+        self.assertNotEqual(item['plant_id'], maple['id'])
+        self.assertEqual(item['by'], 'rules')
+        self.assertEqual(item['substituted_from'], 'Клен татарский')
+        self.assertEqual(item['original_reason'], 'компактный клён татарский безопасен у здания')
+        self.assertIn(f"«{item['name']}»", item['reason'])
+        self.assertIn('6.4 м', item['reason'])
+        self.assertNotIn('безопасен', item['reason'])

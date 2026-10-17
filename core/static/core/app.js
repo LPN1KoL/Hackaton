@@ -21,6 +21,12 @@
     const restartButton = document.getElementById('restart');
     const viewerButton = document.getElementById('open-viewer');
     const summaryList = document.getElementById('result-summary');
+    const resultInfo = document.getElementById('result-info');
+    const resultToggle = resultInfo.querySelector('.result-toggle');
+    resultToggle.addEventListener('click', function () {
+        const open = resultInfo.classList.toggle('is-open');
+        resultToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
     const editorButton = document.getElementById('open-editor');
     const resultError = document.getElementById('result-error');
     const stageLine = document.getElementById('stage-line');
@@ -650,6 +656,7 @@
         fields.forEach(function (field) {
             if (field.ready) files[field.name] = field.file();
         });
+        files.placement = form.elements.placement.value;
 
         submitError = '';
         refresh();

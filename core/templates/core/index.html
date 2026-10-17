@@ -19,6 +19,20 @@
                 {% include "core/_drop.html" with name="file" label="Файл чертежа" %}
                 {% include "core/_drop.html" with name="geobase" label="Файл геоподосновы (необязательно)" side="left" %}
 
+                <fieldset class="mode-field">
+                    <legend class="field-label">Как расставлять растения</legend>
+                    <div class="mode-options">
+                        <label class="mode-option">
+                            <input type="radio" name="placement" value="algorithm" checked>
+                            <span><b>Алгоритм</b><small>Правила композиции: группы, ряды вдоль дорожек, солитеры на открытых местах</small></span>
+                        </label>
+                        <label class="mode-option">
+                            <input type="radio" name="placement" value="model">
+                            <span><b>Модель</b><small>Места выбирает модель, обученная на проектах озеленения; нормы те же</small></span>
+                        </label>
+                    </div>
+                </fieldset>
+
                 <button type="submit" class="btn" id="submit" disabled>Загрузить</button>
             </form>
 
@@ -65,7 +79,15 @@
                 </span>
             </div>
 
-            <dl class="result-summary" id="result-summary"></dl>
+            <div class="result-info" id="result-info">
+                <button type="button" class="result-toggle" aria-expanded="false" aria-controls="result-collapse">
+                    <span>Информация</span>
+                    <svg class="result-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="result-collapse" id="result-collapse">
+                    <div><dl class="result-summary" id="result-summary"></dl></div>
+                </div>
+            </div>
 
             <button type="button" class="btn" id="open-viewer">Открыть просмотр</button>
             <button type="button" class="btn btn-ghost" id="open-editor">Изменить</button>
@@ -123,30 +145,30 @@
                 <span class="viewer-title"></span>
                 <span class="viewer-meta"></span>
             </div>
+            <nav class="vw-modes" aria-label="Что показать на карте">
+                <button type="button" data-mode="plan" class="is-on">План посадок</button>
+                <button type="button" data-mode="norms">Где можно сажать</button>
+            </nav>
             <div class="viewer-actions">
                 <a class="viewer-button" data-link="dxf" download>Скачать DXF</a>
-                <a class="viewer-button" data-link="plan" download>Обоснование</a>
+                <a class="viewer-button" data-link="plan" download>Скачать обоснование</a>
                 <button type="button" class="viewer-button" data-action="close">Закрыть</button>
             </div>
         </header>
-        <aside class="viewer-side">
-            <section>
-                <h2>Слои</h2>
-                <div class="viewer-layers-list"></div>
-            </section>
-            <section class="viewer-side-list">
-                <h2>Структуры</h2>
-                <input type="search" class="viewer-search" placeholder="Поиск: P0002, двор, проезд">
-                <div class="viewer-structures"></div>
-            </section>
-        </aside>
         <div class="viewer-map">
             <svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+            <div class="vw-layers">
+                <button type="button" class="viewer-button" data-action="layers">Слои</button>
+                <div class="vw-layers-panel" hidden>
+                    <p class="viewer-muted">Режимы сверху включают нужные слои сами. Здесь — любой набор вручную.</p>
+                    <div class="vw-layers-list"></div>
+                </div>
+            </div>
+            <div class="vw-legend"></div>
             <div class="viewer-zoom">
                 <button type="button" data-action="zoom-in" aria-label="Приблизить">+</button>
                 <button type="button" data-action="zoom-out" aria-label="Отдалить">−</button>
-                <button type="button" data-action="fit" aria-label="Весь участок">⤢</button>
-                <button type="button" data-action="overview">Весь участок</button>
+                <button type="button" data-action="fit">Весь участок</button>
             </div>
         </div>
         <aside class="viewer-info"></aside>
@@ -170,12 +192,21 @@
         <section class="ed-pane ed-pane-params" data-pane="params">
             <div class="ed-column">
                 <p class="ed-warn ed-moved-note" hidden></p>
+                <section class="ed-intro">
+                    <h2>Как получается результат и что здесь можно поменять</h2>
+                    <ol class="ed-flow">
+                        <li><b>Разметка по нормам</b><span>Чертёж делится на зоны: где можно деревья, где только кустарники или газон — по отступам от сетей, зданий и проездов.</span><em>не меняется</em></li>
+                        <li><b>Подбор растений</b><span>Для каждой зоны выбираются виды и приём посадки: группа, ряд, изгородь, одиночное дерево, цветник.</span><em>меняют пожелания</em></li>
+                        <li><b>Рассадка</b><span>Растения расставляются по точкам внутри своих зон: сколько, как плотно, какими группами.</span><em>меняют параметры</em></li>
+                    </ol>
+                    <p class="ed-note">«Пересчитать» создаёт новую версию результата — исходная остаётся. Если меняли только параметры, пересчёт занимает около полуминуты: растения прежние, меняется только их расстановка.</p>
+                </section>
                 <h2>Пожелания к растениям</h2>
+                <p class="ed-note">Напишите обычными словами, какие растения хочется видеть или убрать. Растения будут подобраны заново с учётом пожеланий — но только из городского ассортимента и там, где это разрешают нормы.</p>
                 <textarea class="ed-text" rows="3" maxlength="2000"
                           placeholder="Например: больше хвойных и цветущих кустарников, без тополей и берёз"></textarea>
-                <p class="ed-note">Текст уходит в запрос к LLM — подбор растений заново. Нормы и справочник растений важнее пожеланий.</p>
                 <h2>Параметры рассадки</h2>
-                <p class="ed-note">Действуют в обоих режимах рассадки, кроме отмеченных. Без новых пожеланий LLM не вызывается — пересчитывается только рассадка. Нормы параметрами не меняются. Двойной щелчок по названию — значение по умолчанию.</p>
+                <p class="ed-note">Виды растений остаются прежними — меняется, сколько их и как они стоят. Нормативные отступы параметрами не меняются. Изменённые параметры отмечены зелёным, вернуть значение — кнопкой «↺» рядом. Редкие настройки спрятаны в «Тонкой настройке» каждой карточки.</p>
                 <div class="ed-params"></div>
             </div>
             <footer class="ed-actions">

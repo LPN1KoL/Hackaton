@@ -75,7 +75,8 @@ def upload(request):
         upload.seek(0)
         files[name] = (upload.name, upload.read())
 
-    job_id = jobs.start(files, form.cleaned_data.get('preferences') or None)
+    job_id = jobs.start(files, form.cleaned_data.get('preferences') or None,
+                        placement=form.cleaned_data.get('placement') or 'algorithm')
     dxf = form.cleaned_data['file']
     return JsonResponse({'job': job_id, 'name': dxf.name, 'size': dxf.size}, status=202)
 

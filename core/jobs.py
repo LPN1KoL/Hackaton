@@ -108,8 +108,9 @@ def _settings():
                 limit=settings.GREENING_LLM_LIMIT, use_llm=settings.GREENING_LLM, placement=settings.GREENING_PLACEMENT)
 
 
-def start(files, preferences=None):
-    """files: {'file': (имя, байты), 'geobase': (имя, байты)?}; preferences — пожелания к подбору растений.
+def start(files, preferences=None, placement='algorithm'):
+    """files: {'file': (имя, байты), 'geobase': (имя, байты)?}; preferences — пожелания к подбору растений;
+    placement — режим рассадки со стартовой страницы (algorithm | model), версии наследуют его в params.
     Возвращает номер задачи."""
     job_id = uuid.uuid4().hex
     path = Path(settings.JOBS_DIR) / job_id
@@ -119,9 +120,10 @@ def start(files, preferences=None):
         inputs[name] = path / f'{name}.dxf'
         inputs[name].write_bytes(content)
     _save(path, state='queued', name=files['file'][0], size=len(files['file'][1]),
-          stage=None, done=None, total=None, started=time.time(), **({'preferences': preferences} if preferences else {}))
+          stage=None, done=None, total=None, started=time.time(), params={'placement': placement},
+          **({'preferences': preferences} if preferences else {}))
     _launch(path, lambda progress: service.run(inputs['file'], inputs.get('geobase'), path / 'out', progress=progress,
-                                               preferences=preferences, **_settings()))
+                                               preferences=preferences, **{**_settings(), 'placement': placement}))
     return job_id
 
 

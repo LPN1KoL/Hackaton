@@ -14,6 +14,8 @@ class ProcessUploadForm(DxfUploadForm):
     geobase = forms.FileField(required=False, validators=[validate_dxf])
     # пожелания к подбору растений — уходят в запрос LLM
     preferences = forms.CharField(required=False, max_length=PREFERENCES_MAX, strip=True)
+    # места посадки: эвристика или модель, обученная на посадках проектировщиков; не указан — алгоритм
+    placement = forms.ChoiceField(required=False, choices=(('algorithm', 'алгоритм'), ('model', 'модель')))
 
 
 class ReviseForm(forms.Form):
