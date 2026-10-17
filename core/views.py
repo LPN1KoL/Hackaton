@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import threading
 from pathlib import Path
 
 from django.conf import settings
@@ -12,6 +13,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from . import jobs
 from greening import params as placement_params
+from greening import scene as greening_scene
 
 from .forms import DxfUploadForm, ProcessUploadForm, ReviseForm
 from .rendering import RenderError, render_svg
@@ -209,3 +211,34 @@ def job_result(request, job_id, kind):
     if download:
         response['Content-Disposition'] = content_disposition_header(True, download.format(stem=stem))
     return response
+
+
+@require_GET
+def job_3d(request, job_id):
+    """Отдельная страница 3D-вида результата (core/static/core/scene.js): открывается в новой вкладке."""
+    state = jobs.status(job_id)
+    if state is None:
+        raise Http404('Нет такой задачи')
+    return render(request, 'core/scene.html', {'job_id': job_id, 'name': state.get('name', '')})
+
+
+_scene_lock = threading.Lock()
+
+
+@require_GET
+def job_scene(request, job_id):
+    """Данные 3D-сцены: строятся при первом запросе из файлов результата (около секунды) и кэшируются."""
+    path = jobs.result(job_id, 'scene.json')
+    if path is None or not greening_scene.fresh(path):
+        if jobs.result(job_id, 'placement.geojson') is None:
+            raise Http404('Результат ещё не готов')
+        with _scene_lock:
+            path = jobs.result(job_id, 'scene.json')
+            if path is None or not greening_scene.fresh(path):
+                root = jobs.folder(job_id)
+                sources = [(root / f'{name}.dxf', source) for name, source in (('file', 'plan'), ('geobase', 'base'))
+                           if (root / f'{name}.dxf').is_file()]
+                path = greening_scene.write(root / 'out', sources)
+    if path is None:
+        raise Http404('Нет данных для 3D')
+    return FileResponse(path.open('rb'), content_type='application/json')

@@ -1,0 +1,95 @@
+{% load static %}<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>3D-вид озеленения</title>
+    <link rel="stylesheet" href="{% static 'core/scene.css' %}">
+    <script type="importmap">
+    {"imports": {
+        "three": "{% static 'core/vendor/three/three.module.min.js' %}",
+        "three/addons/": "{% static 'core/vendor/three/addons/' %}"
+    }}
+    </script>
+</head>
+<body>
+<div class="sc" id="scene" data-job="{{ job_id }}" data-scene="{% url 'core:job_scene' job_id %}" data-name="{{ name }}">
+    <canvas class="sc-canvas"></canvas>
+
+    <header class="sc-bar">
+        <div class="sc-head">
+            <span class="sc-title">3D-вид</span>
+            <span class="sc-meta">{{ name }}</span>
+        </div>
+        <div class="sc-seg" data-group="season" role="group" aria-label="Сезон">
+            <button type="button" data-value="spring">Весна</button>
+            <button type="button" data-value="summer" class="is-on">Лето</button>
+            <button type="button" data-value="autumn">Осень</button>
+        </div>
+        <div class="sc-seg" data-group="time" role="group" aria-label="Время суток">
+            <button type="button" data-value="morning">Утро</button>
+            <button type="button" data-value="day" class="is-on">День</button>
+            <button type="button" data-value="evening">Вечер</button>
+        </div>
+        <div class="sc-seg" data-group="stage" role="group" aria-label="Проект">
+            <button type="button" data-value="before">До</button>
+            <button type="button" data-value="after" class="is-on">После</button>
+        </div>
+    </header>
+
+    <aside class="sc-panel">
+        <section>
+            <h2>Возраст посадок</h2>
+            <input type="range" class="sc-age" min="0" max="2" step="0.01" value="1" aria-label="Возраст посадок">
+            <div class="sc-age-marks"><span>при посадке</span><span>через 10 лет</span><span>взрослые</span></div>
+        </section>
+        <section>
+            <h2>Камера</h2>
+            <div class="sc-buttons">
+                <button type="button" data-view="overview">Обзор</button>
+                <button type="button" data-view="top">Сверху</button>
+                <button type="button" data-view="walk">Пешеход</button>
+            </div>
+            <select class="sc-structure" aria-label="Перейти к структуре">
+                <option value="">Перейти к структуре…</option>
+            </select>
+            <p class="sc-hint" data-hint="orbit">Мышь: вращение, колесо — масштаб, правая кнопка — сдвиг.</p>
+            <p class="sc-hint" data-hint="walk" hidden>WASD или стрелки — идти, мышь — оглядеться.</p>
+        </section>
+        <section>
+            <h2>Показать</h2>
+            <label class="sc-check"><input type="checkbox" data-toggle="context" checked> Окружающая застройка</label>
+            <label class="sc-check"><input type="checkbox" data-toggle="existing" checked> Существующие деревья</label>
+            <label class="sc-check"><input type="checkbox" data-toggle="highlight"> Выделить новые посадки</label>
+            <label class="sc-check"><input type="checkbox" data-toggle="quality" checked> Мягкие тени (AO)</label>
+        </section>
+        <section>
+            <h2>Кадры</h2>
+            <div class="sc-buttons">
+                <button type="button" data-action="shot">Снимок PNG</button>
+                <button type="button" data-action="series">Серия для отчёта</button>
+            </div>
+        </section>
+    </aside>
+
+    <div class="sc-card" hidden></div>
+    <div class="sc-legend"></div>
+    <div class="sc-loading"><span class="sc-spinner"></span><span class="sc-loading-text">Загрузка сцены…</span></div>
+
+    <div class="sc-gallery" hidden>
+        <div class="sc-gallery-box">
+            <header>
+                <strong>Серия кадров</strong>
+                <span class="sc-gallery-state"></span>
+                <span class="sc-gallery-actions">
+                    <button type="button" data-action="download-all" disabled>Скачать все</button>
+                    <button type="button" data-action="close-gallery">Закрыть</button>
+                </span>
+            </header>
+            <div class="sc-gallery-grid"></div>
+        </div>
+    </div>
+</div>
+<script type="module" src="{% static 'core/scene.js' %}"></script>
+</body>
+</html>

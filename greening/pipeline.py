@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import shapely
 from shapely import STRtree
 
-from . import clearance, reader, sections, structures, surfaces, territory
+from . import clearance, reader, scene, sections, structures, surfaces, territory
 from .classify import Classifier
 
 # объекты дальше этого от территории не нужны: самый большой отступ — 10 м от школ
@@ -30,6 +30,8 @@ class Result:
     obstacles: dict = field(default_factory=dict)
     # условные стволы в полосах деревьев (structures.row_trunks)
     row_trees: list = field(default_factory=list)
+    # здания с этажностью и подписи пород вокруг территории — только для 3D-сцены (scene.py)
+    context: dict = field(default_factory=dict)
 
 
 def _layer_report(items, area):
@@ -70,11 +72,22 @@ def parse(plan, geobase=None, log=None):
     info.update(duplicates_removed=removed, units=units)
     index = STRtree([i.geometry for i in items])
     local = [items[int(n)] for n in index.query(area.buffer(MARGIN))]
+    scene_config = scene.load_config()
+    around = [items[int(n)] for n in index.query(area.buffer(scene_config['context_m']))]
     del items, index
     lap('территория')
 
     surface_map, surface_sources = surfaces.build(local, area, classifier)
     lap('поверхности')
+
+    # окружение для 3D-сцены — дополнение: если не вышло, разметка идёт дальше без него
+    try:
+        context = scene.context(around, area, surface_map, scene_config)
+    except Exception as exc:
+        log(f'окружение для 3D не собрано: {exc}')
+        context = {}
+    del around
+    lap('окружение')
 
     found = structures.find(local, area, classifier)
     tree_points, tree_rows = structures.trees(local, area)
@@ -102,4 +115,4 @@ def parse(plan, geobase=None, log=None):
         },
     )
     return Result(area, info, surface_map, found, tree_points, tree_rows, section_list, summary,
-                  _layer_report(local, area), timings, obstacles, row_points)
+                  _layer_report(local, area), timings, obstacles, row_points, context)

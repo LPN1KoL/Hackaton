@@ -640,6 +640,7 @@
         downloadLink.href = jobUrl(job.id, 'dxf/');
         planLink.href = jobUrl(job.id, 'report/');
         clearanceLink.href = jobUrl(job.id, 'clearance/');
+        document.getElementById('open-3d').href = jobUrl(job.id, '3d/');
         clearanceLink.hidden = state.summary.clearance_checked == null;
         resultName.textContent = started.name;
         resultMeta.textContent = formatSize(started.size);
@@ -758,7 +759,7 @@
             window.GreeningViewer.open(opened.view, {
                 name: opened.name,
                 summary: opened.summary,
-                links: { dxf: jobUrl(opened.id, 'dxf/'), plan: jobUrl(opened.id, 'report/') },
+                links: { dxf: jobUrl(opened.id, 'dxf/'), plan: jobUrl(opened.id, 'report/'), scene: jobUrl(opened.id, '3d/') },
             });
         } catch (err) {
             submitError = err.message;

@@ -749,6 +749,8 @@
                 ' · ' + num(D.plants.length) + ' растений';
             root.querySelector('[data-link="dxf"]').href = meta.links.dxf;
             root.querySelector('[data-link="plan"]').href = meta.links.plan;
+            const scene = root.querySelector('[data-link="scene"]');
+            if (scene) { scene.hidden = !meta.links.scene; scene.href = meta.links.scene || '#'; }
             root.hidden = false;
             document.body.classList.add('has-viewer');
             requestAnimationFrame(function () { setView(state.sid ? byId[state.sid].window.slice() : D.view.slice()); });

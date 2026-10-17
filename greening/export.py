@@ -62,6 +62,11 @@ def to_geojson(result):
         add(point, {'layer': 'tree', 'row': True})
     if not result.tree_rows.is_empty:
         add(result.tree_rows, {'layer': 'tree_row', 'area_m2': round(result.tree_rows.area, 1)})
+    context = getattr(result, 'context', None) or {}
+    for geometry, floors, source in context.get('buildings', []):
+        add(geometry, {'layer': 'building', 'floors': floors, 'source': source, 'area_m2': round(geometry.area, 1)})
+    for point, text in context.get('tree_labels', []):
+        add(point, {'layer': 'tree_label', 'text': text})
     for section in result.sections:
         add(section['geometry'], {'layer': 'section', **{k: v for k, v in section.items() if k != 'geometry'}})
     return {
