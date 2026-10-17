@@ -777,4 +777,17 @@
         refresh();
         goTo('upload');
     });
+
+    // ролик «Подсказки по интерфейсу»: закрытие — кнопкой, Esc или щелчком мимо окна
+    const helpDialog = document.getElementById('help-video');
+    const helpVideo = helpDialog.querySelector('video');
+    document.getElementById('open-help').addEventListener('click', function () {
+        helpDialog.showModal();
+        helpVideo.play().catch(function () {});
+    });
+    helpDialog.querySelector('[data-action="close"]').addEventListener('click', function () { helpDialog.close(); });
+    helpDialog.addEventListener('click', function (event) {
+        if (event.target === helpDialog) helpDialog.close();
+    });
+    helpDialog.addEventListener('close', function () { helpVideo.pause(); });
 }());

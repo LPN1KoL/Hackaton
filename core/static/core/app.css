@@ -236,6 +236,34 @@ h1 {
     border: 1px solid var(--line);
 }
 
+/* ролик с подсказками по интерфейсу — на странице загрузки */
+#open-help { margin-top: 8px; }
+
+.help-video {
+    width: min(1100px, calc(100vw - 32px));
+    padding: 0;
+    border: 0;
+    border-radius: 12px;
+    background: #111;
+    overflow: hidden;
+}
+.help-video::backdrop { background: rgba(0, 0, 0, 0.6); }
+.help-video-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 8px 8px 16px;
+    background: var(--bg);
+    font-size: 14px;
+}
+.help-video video {
+    display: block;
+    width: 100%;
+    max-height: calc(100vh - 120px);
+    background: #000;
+}
+
 .preview-toggle {
     display: inline-flex;
     align-items: center;
