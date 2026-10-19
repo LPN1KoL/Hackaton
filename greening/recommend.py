@@ -36,7 +36,7 @@ from shapely import STRtree
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
-from . import blocks, catalog, justify, place, rules
+from . import blocks, catalog, justify, place, rules, species
 
 logger = logging.getLogger(__name__)
 
@@ -682,6 +682,22 @@ def _check(answer, structure, plants):
                             'reason': _substitute_reason(plant, substitute, zone)}
                     plant = substitute
                     lines, reason = justify.norms(plant, zone, structure)
+        # нормы по видам (у теплотрасс, у спортивных площадок) — вид от LLM заменяет код
+        why = None if reason else species.unfit(plant, zone)
+        if why:
+            substitute = _replacement(zone, structure, plants, plant, answer)
+            if substitute is None:
+                reason = why
+            else:
+                rejected.append({**item, 'rejected': why, 'replaced_by': substitute['name']})
+                item = {**item, 'plant_id': substitute['id'], 'by': 'rules',
+                        'substituted_from': item.get('substituted_from', plant['name']),
+                        'original_reason': item.get('original_reason', item.get('reason', '')),
+                        'reason': _species_reason(plant, substitute, why)}
+                plant = substitute
+                lines, reason = justify.norms(plant, zone, structure)
+        if not reason:
+            lines = lines + species.notes(plant, zone)
         if reason:
             rejected.append({**item, 'rejected': reason})
         else:
@@ -701,6 +717,27 @@ def _substitute_reason(plant, substitute, zone):
             f"по {justify.TABLE}, примечание 3, такие деревья сажают не ближе {justify.WIDE_CROWN_M:g} м от жилых домов. "
             f"Вместо него поставлено дерево без широкой кроны в той же роли — «{substitute['name']}»"
             + (f" ({traits})" if traits else '') + '.')
+
+
+def _species_reason(plant, substitute, why):
+    """Обоснование вида, поставленного кодом вместо вида, которому зона не годится по нормам видов."""
+    traits = ', '.join(f for f in justify.facts(substitute) if not f.startswith('свет'))
+    return (f"Для этого места LLM выбрала вид «{plant['name']}», но {why}. Вместо него поставлен вид той же группы, "
+            f"подходящий условиям места, — «{substitute['name']}»" + (f" ({traits})" if traits else '') + '.')
+
+
+def _replacement(zone, structure, plants, plant, answer=None):
+    """Вид той же группы (дерево — деревом, куст — кустом), подходящий зоне по всем правилам: сначала из выбранных
+    LLM для этой структуры, потом лучший по правилам. Нет такого — None."""
+    groups = next(g for g in GROUPS.values() if plant['group'] in g)
+    by_id = {p['id']: p for p in plants}
+    roadside, shade = 'roadside' in zone['tags'], bool(set(zone['tags']) & set(rules.SHADE_TAGS))
+    chosen = [by_id.get(i.get('plant_id')) for i in (answer or {}).get('plantings', [])]
+    candidates = [p for p in chosen if p and p['group'] in groups]
+    candidates += sorted((p for p in plants if p['group'] in groups),
+                         key=lambda p: (p['group'] != plant['group'], -rules._score(p, roadside, shade), p['id']))
+    return next((p for p in candidates if p['id'] != plant['id'] and rules._fits(p, zone, structure['territory'])
+                 and justify.norms(p, zone, structure)[1] is None), None)
 
 
 def _compact_tree(zone, structure, plants, answer=None):
@@ -1097,14 +1134,18 @@ def _from_classes(structure, index, classes, answer, plants):
     return {'plantings': plantings, 'zones': zones, 'justification': f'{common} {note}'.strip()}
 
 
-def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None, preferences=None):
+def recommend(geojson, llm, limit=None, workers=5, log=print, progress=None, preferences=None, restrictions=None):
     """progress(готово, всего) — после каждой структуры, отправленной в LLM.
     preferences — пожелания пользователя к подбору растений (текст): уходят в каждый запрос к LLM.
 
     llm=None — подбор правилами (rules.py) для всех структур; если LLM не ответила по структуре,
-    для неё тоже работают правила, а ошибка остаётся в записи (llm_error)."""
+    для неё тоже работают правила, а ошибка остаётся в записи (llm_error).
+    restrictions — species.Restrictions с геометрией объектов: нормы по видам у теплотрасс (без неё — только
+    по условиям места)."""
     plants = catalog.load()
     found = structures(geojson)
+    if restrictions is not None:
+        restrictions.annotate(found, geojson)
     # в LLM идут все структуры, где есть газон не меньше порога, даже если сажать нельзя ничего:
     # место всё равно нужно объяснить; мелкие газоны закрываются кодом
     asked = [s for s in found if any(not p['small'] for p in s['patches'])]

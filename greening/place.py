@@ -902,8 +902,9 @@ AUTO_NOTES = (KEPT_BED_NOTE, NOT_FOUND_NOTE,
               'Рассадка не нашла места: зона уже занята другими посадками и существующими деревьями с нужными просветами.')
 
 
-def place(geojson, plan, seed=0, config=None, log=print, mode='algorithm', model=None):
-    """mode — 'algorithm' или 'model' (см. начало модуля); model — model.Model, по умолчанию из greening/models."""
+def place(geojson, plan, seed=0, config=None, log=print, mode='algorithm', model=None, restrictions=None):
+    """mode — 'algorithm' или 'model' (см. начало модуля); model — model.Model, по умолчанию из greening/models;
+    restrictions — species.Restrictions: вид не ставится ближе нормы для него (у теплотрасс — МГСН, п. 4.2.8)."""
     config = config or load_config()
     rng = np.random.default_rng(seed)
     features = [(shape(f['geometry']), f['properties']) for f in geojson['features']]
@@ -978,20 +979,24 @@ def place(geojson, plan, seed=0, config=None, log=print, mode='algorithm', model
                 for index, item, k in points:
                     if k != kind:
                         continue
-                    crown = _crown(plants.get(item.get('plant_id')), kind, config)
+                    entry = plants.get(item.get('plant_id'))
+                    crown = _crown(entry, kind, config)
                     mode = _mode(item.get('role'))
+                    # нормы по видам: полоса, где этот вид сажать нельзя, из области вычитается
+                    own = inner if restrictions is None or entry is None else                         restrictions.cut(inner, entry['name'], entry['flags'])
                     meta = {**base, 'plant_id': item.get('plant_id'), 'name': item.get('name'), 'kind': kind,
                             'role': item.get('role'), 'crown_m': crown}
                     if kind not in zone['allowed']:
                         results[index] = (meta, item, [])
                     elif mode == 'row':
                         cap = None if kind != 'tree' or tree_left == math.inf else max(0, tree_left)
-                        results[index] = (meta, item, placer.row(inner, None, kind, crown, style, meta, cap) if cap != 0 else [])
+                        results[index] = (meta, item, placer.row(own, None, kind, crown, style, meta, cap)
+                                          if cap != 0 and not own.is_empty else [])
                         crowns[kind] += len(results[index][2]) * math.pi * (crown / 2) ** 2
                         if kind == 'tree':
                             tree_left -= len(results[index][2])
                     else:
-                        entries.append((index, item, (placer.inset(inner, kind, crown), crown, mode, meta)))
+                        entries.append((index, item, (placer.inset(own, kind, crown), crown, mode, meta)))
                         heights.append(_height(plants.get(item.get('plant_id')), crown))
                 budget = math.inf
                 if kind == 'shrub':
@@ -1209,9 +1214,10 @@ def apply_counts(plan, result):
     return plan
 
 
-def verify(result, geojson, config=None):
+def verify(result, geojson, config=None, restrictions=None):
     """Независимая проверка рассадки: каждое растение в секции, где разрешён его вид посадки, расстояния
-    между растениями (по кроне, группе) и до существующих деревьев не меньше правил. Список нарушений."""
+    между растениями (по кроне, группе) и до существующих деревьев не меньше правил, нормы по видам
+    (restrictions — species.Restrictions). Список нарушений."""
     config = config or load_config()
     features = [(shape(f['geometry']), f['properties']) for f in geojson['features']]
     sections = [(g, p) for g, p in features if p['layer'] == 'section']
@@ -1224,6 +1230,11 @@ def verify(result, geojson, config=None):
         allowed = set().union(*[set(p['allowed']) for _, p in hits]) if hits else set()
         if props['kind'] != 'herbaceous' and props['kind'] not in allowed:
             problems.append(f"{props['structure']}/{props['zone']} {props['name']}: {props['kind']} вне разрешённой секции")
+        if restrictions is not None:
+            for rule in restrictions.applying(props.get('name')):
+                if restrictions.forbidden(rule).buffer(-ROUNDING).contains(point):
+                    problems.append(f"{props['structure']}/{props['zone']} {props['name']}: ближе {rule['distance']:g} м "
+                                    f"к объекту «{rule['object_title']}» ({rule['cite']})")
         plant = (props['kind'], props['crown_m'], props['spacing_m'], props.get('group_id'))
         if not field.ok(point.x, point.y, plant, ROUNDING):
             problems.append(f"{props['structure']}/{props['zone']} {props['name']}: ближе правил к соседу")
@@ -1237,6 +1248,14 @@ LAYERS = {'tree': ('Greening_Деревья', 94), 'shrub': ('Greening_Куст�
           'herbaceous': ('Greening_Травянистые', 51), 'bed': ('Greening_Цветники', 221),
           'lawn': ('Greening_Газон', 3), 'spot': ('Greening_Кустарники_места', 62)}
 LABEL_HEIGHT = 0.5
+# куст в группе или изгороди рисуется посадочным местом этого радиуса (крону показывает контур группы), м;
+# тот же размер — в просмотре (view.py)
+SPOT_RADIUS = 0.25
+
+
+def is_spot(props):
+    """Растение рисуется посадочным местом, а не кругом кроны: куст в группе или изгороди."""
+    return props['kind'] == 'shrub' and (props.get('group_size', 1) > 1 or props.get('role') in ROW_ROLES)
 
 
 def add_layers(doc, result):
@@ -1247,23 +1266,29 @@ def add_layers(doc, result):
     from .export import _area, _layer
 
     msp = doc.modelspace()
-    for feature in result['features']:
+    # порядок отрисовки — порядок записи: заливки газона и цветников внизу, над ними контуры групп, сверху
+    # растения. Где прозрачность не показывается (AutoCAD с выключенной прозрачностью, многие просмотрщики DXF),
+    # заливка, записанная позже, закрывала кусты и деревья своей структуры
+    order = {'lawn': 0, 'bed': 1, 'group': 2, 'plant': 3}
+    for feature in sorted(result['features'], key=lambda f: order.get(f['properties']['layer'], 0)):
         props = feature['properties']
         geometry = shape(feature['geometry'])
         if props['layer'] == 'plant':
-            in_group = props['kind'] == 'shrub' and (props.get('group_size', 1) > 1 or props.get('role') in ROW_ROLES)
+            in_group = is_spot(props)
             name, color = LAYERS['spot' if in_group else props['kind']]
             layer = _layer(doc, name, color)
             if in_group:
-                msp.add_circle((geometry.x, geometry.y), 0.15, dxfattribs={'layer': layer})
+                msp.add_circle((geometry.x, geometry.y), SPOT_RADIUS, dxfattribs={'layer': layer})
             else:
                 msp.add_circle((geometry.x, geometry.y), props['crown_m'] / 2, dxfattribs={'layer': layer})
                 msp.add_point((geometry.x, geometry.y), dxfattribs={'layer': layer})
         elif props['layer'] == 'group':
             name, color = LAYERS[props['kind']]
             layer = _layer(doc, name, color)
+            # дыры контура (просвет внутри группы) — тоже контурами, иначе в CAD группа их накрывает
             for poly in _polygons(geometry):
-                msp.add_lwpolyline(list(poly.exterior.coords)[:-1], close=True, dxfattribs={'layer': layer})
+                for ring in (poly.exterior, *poly.interiors):
+                    msp.add_lwpolyline(list(ring.coords)[:-1], close=True, dxfattribs={'layer': layer})
             at = geometry.representative_point()
             msp.add_text(props['label'], height=LABEL_HEIGHT, dxfattribs={'layer': layer}).set_placement(
                 (at.x, at.y), align=TextEntityAlignment.MIDDLE_CENTER)

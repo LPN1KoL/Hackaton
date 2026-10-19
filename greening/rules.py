@@ -6,6 +6,7 @@
 Правила выбора — те же ограничения, что в инструкции LLM, но жёстко:
 - только разрешённая в зоне группа и допуск по типу территории (колонка «где» справочника);
 - у детских и спортивных площадок — без «дп»; у зданий ближе 10 м — без широкой кроны («шк»);
+  нормы по видам (species.py): у теплотрасс и спортивных площадок — МГСН 1.02-02, пп. 4.2.8, 4.12.13.2;
   у проезжей части — без чувствительных к реагентам («г»); в тени — только с «т» или «п»;
 - предпочтение основному ассортименту («о») и неприхотливым («н»), у дорог — устойчивым («у»).
 Палитра выбирается на всю структуру (единый стиль), разная у разных структур — по номеру структуры.
@@ -14,7 +15,7 @@
 
 import hashlib
 
-from . import justify
+from . import justify, species
 
 GROUPS = {'tree': ('ДЛ', 'ДХ'), 'shrub': ('КЛ', 'КХ'), 'perennial': ('М',)}
 LAWN, SHADE_LAWN = 'Т001', 'Т002'
@@ -51,6 +52,8 @@ def _fits(plant, zone, territory):
     if 'шк' in flags and zone.get('building_m') is not None and zone['building_m'] < justify.WIDE_CROWN_M:
         return False
     if 'roadside' in tags and 'г' in flags:
+        return False
+    if species.unfit(plant, zone):
         return False
     shade = tags & set(SHADE_TAGS)
     light = flags & {'с', 'п', 'т'}

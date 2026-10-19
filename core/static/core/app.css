@@ -1125,10 +1125,6 @@ body.has-viewer { overflow: hidden; }
                    font-size: 12.5px; cursor: pointer; }
 .ed-chips button.is-on { background: var(--ed-accent); border-color: var(--ed-accent); color: #fff; }
 
-.ed-stepper { display: inline-flex; align-items: center; gap: 4px; }
-.ed-stepper button { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #d4d4d4; background: #fff; font: inherit; cursor: pointer; }
-.ed-stepper input { width: 80px; text-align: center; font: inherit; padding: 5px; border: 1px solid #d4d4d4; border-radius: 8px; }
-.ed-dice { font-size: 15px; }
 
 .ed-pane-move { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 0; }
 .ed-side { padding: 14px 16px; border-right: 1px solid var(--line); overflow: auto; display: flex; flex-direction: column; gap: 8px; }

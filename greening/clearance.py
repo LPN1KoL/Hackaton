@@ -21,6 +21,7 @@ from shapely import STRtree
 from shapely.geometry import Point, shape
 
 from . import sections as markup
+from . import species
 
 # координаты рассадки округлены до 1 см — меньшая недостача не нарушение, м
 TOLERANCE = 0.01
@@ -106,6 +107,30 @@ def check(placement, obstacles, norms, territory=None):
                         notes.append({**_plant(plants[n]), 'rule': rule['rule'], 'object': rule['title'],
                                       'norm_m': norm, 'distance_m': round(float(d), 2), 'layer': layer,
                                       'note': 'ближе нормы только к линии, которую фильтр счёл выноской подписи'})
+
+    # нормы по видам (species_rules): вид не ближе distance к объекту — по названию вида
+    for rule in species.load(norms):
+        if 'distance' not in rule:
+            continue
+        part = [s for s in obstacles.get((rule['source'], rule['object']), []) if not s[2]]
+        chosen = [n for n, (_, p) in enumerate(plants) if species.matches(rule, p.get('name'))]
+        stat = by_rule.setdefault(rule['rule'], {'doc': rule['cite'], 'objects': {rule['why']}, 'checked': 0,
+                                                 'violations': 0, 'min_m': None})
+        stat['checked'] += len(chosen)
+        if not part or not chosen:
+            continue
+        tree = STRtree([g for g, _, _ in part])
+        found, distance = tree.query_nearest(points[chosen], max_distance=rule['distance'] + NEAR, return_distance=True)
+        for (p, o), d in zip(found.T, distance):
+            n = chosen[int(p)]
+            entry = {'rule': rule['rule'], 'doc': rule['cite'], 'object': f"{rule['object_title']} (вид: {rule['why']})",
+                     'norm_m': rule['distance'], 'distance_m': round(float(d), 2), 'layer': part[int(o)][1]}
+            near[n].append(entry)
+            if stat['min_m'] is None or d < stat['min_m']:
+                stat['min_m'] = round(float(d), 2)
+            if d < rule['distance'] - TOLERANCE:
+                stat['violations'] += 1
+                violations.append({**_plant(plants[n]), **entry})
 
     # охранные зоны: посадка по согласованию с владельцем сети
     approvals = []

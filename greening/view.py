@@ -13,18 +13,18 @@ from . import catalog, justify, place, recommend
 from .split import MARGIN
 
 SIMPLIFY = 0.05
+# контуры посадок (группы, цветники, газон) — почти без упрощения: в просмотре они те же, что в DXF
+PLANTING_SIMPLIFY = 0.01
 SURFACES = ('roadway', 'sidewalk', 'paving', 'sealed', 'gravel', 'playground', 'building',
             'lawn', 'flowerbed', 'ground', 'unknown')
 PLANTING_WORDS = {'tree': 'деревья', 'shrub': 'кустарники'}
-# радиус точки посадочного места куста в группе на карте, м
-GROUP_SPOT = 0.25
 SEASONS = ('весна', 'лето', 'осень', 'зима')
 
 
-def _path(geometry):
+def _path(geometry, tolerance=SIMPLIFY):
     """SVG path; ось y переворачивается, чтобы текст не зеркалился."""
     parts = []
-    geometry = geometry.simplify(SIMPLIFY)
+    geometry = geometry.simplify(tolerance)
     for polygon in getattr(geometry, 'geoms', [geometry]):
         if polygon.geom_type != 'Polygon' or polygon.is_empty:
             continue
@@ -154,18 +154,19 @@ def build(geojson, plan=None, placement=None):
             item['placed'] = round(item['placed'] + (1 if p['layer'] == 'plant' else p.get('area_m2', 0)), 1)
         if p['layer'] == 'plant':
             # куст в группе или изгороди — точка посадочного места: крону показывает контур группы
-            in_group = p['kind'] == 'shrub' and (p.get('group_size', 1) > 1 or p.get('role') in ('живая изгородь', 'рядовая посадка'))
-            radius = GROUP_SPOT if in_group else round(p['crown_m'] / 2, 2)
+            radius = place.SPOT_RADIUS if place.is_spot(p) else round(p['crown_m'] / 2, 2)
             # [x, -y, радиус, вид, подпись, структура, посадка, номер растения, группа] — номер и группа для редактора
             data['plants'].append([round(g.x, 2), round(-g.y, 2), radius, p['kind'],
                                    f"{p['name']} ({p['role']}), {p['structure']}/{p['zone']}", sid, number,
                                    p.get('id'), p.get('group_id')])
         elif p['layer'] == 'group':
-            data['groups'].append({'d': _path(g), 't': f"{p['label']} — {p['role']}", 's': sid, 'i': number,
-                                   'label': p['label'], 'at': _labels(g, 0)[:1], 'gid': p.get('group_id')})
+            # подпись — в той же точке, что в DXF (place.add_layers)
+            at = g.representative_point()
+            data['groups'].append({'d': _path(g, PLANTING_SIMPLIFY), 't': f"{p['label']} — {p['role']}", 's': sid, 'i': number,
+                                   'label': p['label'], 'at': [[round(at.x, 2), round(-at.y, 2)]], 'gid': p.get('group_id')})
         else:
             data['beds' if p['layer'] == 'bed' else 'lawns'].append(
-                {'d': _path(g), 't': f"{p['name']}: {p['area_m2']} м²", 's': sid, 'i': number})
+                {'d': _path(g, PLANTING_SIMPLIFY), 't': f"{p['name']}: {p['area_m2']} м²", 's': sid, 'i': number})
     # что украшает структуру в каждый сезон — по посаженному и сезонным свойствам справочника
     flags = {p['id']: p for p in catalog.load()}
     for s in data['structures']:

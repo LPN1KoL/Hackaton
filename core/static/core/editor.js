@@ -184,26 +184,6 @@
         };
     }
 
-    // seed — счётчик с кнопками и кубиком
-    function stepper(spec, row) {
-        const box = html('div', 'ed-stepper', row);
-        const minus = html('button', null, box, '−');
-        const input = html('input', null, box);
-        const plus = html('button', null, box, '+');
-        const dice = html('button', 'ed-dice', box, '🎲');
-        [minus, plus, dice].forEach(function (b) { b.type = 'button'; });
-        dice.title = 'Случайный вариант';
-        input.type = 'number';
-        input.min = spec.min;
-        input.max = spec.max;
-        function take(v) { setValue(spec.key, Math.max(spec.min, Math.min(spec.max, v))); }
-        minus.addEventListener('click', function () { take((values[spec.key] || 0) - 1); });
-        plus.addEventListener('click', function () { take((values[spec.key] || 0) + 1); });
-        dice.addEventListener('click', function () { take(Math.floor(Math.random() * 1000)); });
-        input.addEventListener('change', function () { take(parseInt(input.value, 10) || 0); });
-        return function set(value) { input.value = value; };
-    }
-
     // «Тонкая настройка» карточки: плавно раскрывается (высота 0fr → 1fr)
     function open(more, state) {
         more.classList.toggle('is-open', state);
@@ -245,7 +225,6 @@
                 let set;
                 if (spec.kind === 'choice') set = segments(spec, row);
                 else if (spec.kind === 'sizes') set = chips(spec, row);
-                else if (spec.key === 'seed') set = stepper(spec, row);
                 else set = slider(spec, row);
                 if (spec.help) html('div', 'ed-help', row, spec.help);
                 controls[spec.key] = { set: set, row: row };
@@ -265,7 +244,9 @@
     }
 
     const ready = fetch(paramsUrl).then(function (r) { return r.json(); }).then(function (data) {
-        schema = data;
+        // скрытые параметры (номер варианта) — только в API: форма их не показывает и не отправляет,
+        // версия берёт их у прежней
+        schema = { groups: data.groups, params: data.params.filter(function (p) { return !p.hidden; }) };
         build();
     }).catch(function () {
         paramsBox.textContent = 'Не удалось загрузить параметры рассадки.';

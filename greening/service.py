@@ -35,7 +35,7 @@ from pathlib import Path
 from shapely.geometry import shape
 from shapely.ops import unary_union
 
-from . import annotate, clearance, export, params as placement_params, parse, place, recommend, sections, variety
+from . import annotate, clearance, export, params as placement_params, parse, place, recommend, sections, species, variety
 from . import view as view_data
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ def move(plan_path, geobase_path, parent_out, out_dir, moves, params=None, progr
     placement = json.loads((parent / 'placement.geojson').read_text(encoding='utf-8'))
     moved = place.apply_moves(placement, moves)
     config, _, _ = placement_params.apply(placement_params.clean(params or {}))
-    problems = place.verify(placement, geojson, config)
+    problems = place.verify(placement, geojson, config, species.Restrictions(obstacles))
     placement['metadata']['summary']['violations'] = len(problems)
     _write(out / 'placement.geojson', placement)
     check = clearance.check(placement, obstacles, sections.load_norms(), territory)
@@ -151,6 +151,9 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
     report('markup')
     geojson, obstacles, territory = _markup(plan_path, geobase_path, out, markup_from)
 
+    # нормы по видам (у теплотрасс — МГСН 1.02-02, п. 4.2.8) — по исходной геометрии сетей
+    restrictions = species.Restrictions(obstacles)
+
     report('llm', 0, None)
     reuse = Path(plan_from) / 'plan.json' if plan_from else None
     if reuse is not None and reuse.is_file():
@@ -160,7 +163,8 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
     else:
         llm = make_llm(cache_dir, use_llm)
         plan = recommend.recommend(geojson, llm, limit, workers, log=logger.info,
-                                   progress=lambda done, total: report('llm', done, total), preferences=preferences)
+                                   progress=lambda done, total: report('llm', done, total), preferences=preferences,
+                                   restrictions=restrictions)
     _write(out / 'plan.json', plan)
 
     report('placement')
@@ -170,8 +174,9 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
     variety.compose(plan, config)
     placement_mode = mode or placement
     seed = seed if chosen_seed is None else chosen_seed
-    placement = place.place(geojson, plan, seed, config=config, mode=placement_mode, log=logger.info)
-    problems = place.verify(placement, geojson, config)
+    placement = place.place(geojson, plan, seed, config=config, mode=placement_mode, log=logger.info,
+                            restrictions=restrictions)
+    problems = place.verify(placement, geojson, config, restrictions)
     placement['metadata']['summary']['violations'] = len(problems)
     _write(out / 'placement.geojson', placement)
     # количество растений определяет рассадка — в план оно попадает после неё
