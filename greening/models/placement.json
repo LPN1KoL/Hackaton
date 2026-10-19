@@ -22,8 +22,8 @@
  },
  "kinds": {
   "tree": {
-   "rows": 12456,
-   "positives_project": 2335,
+   "rows": 13653,
+   "positives_project": 2316,
    "objects_with_project": [
     "1. Олимпийская деревня",
     "10. Старый Гай ул",
@@ -37,59 +37,59 @@
    "holdout": [
     {
      "object": "1. Олимпийская деревня",
-     "positives": 1215,
-     "auc_model": 0.596,
-     "auc_algorithm": 0.577
+     "positives": 1196,
+     "auc_model": 0.656,
+     "auc_algorithm": 0.575
     },
     {
      "object": "10. Старый Гай ул",
      "positives": 32,
-     "auc_model": 0.601,
+     "auc_model": 0.678,
      "auc_algorithm": 0.59
     },
     {
      "object": "12. Наташинский пр-д(Дорога от ул. Борисовские пруды до пр.пр5396(вокруг м-р Братеево))",
      "positives": 198,
-     "auc_model": 0.68,
-     "auc_algorithm": 0.587
+     "auc_model": 0.645,
+     "auc_algorithm": 0.593
     },
     {
      "object": "13. Харьковский проезд",
      "positives": 119,
-     "auc_model": 0.691,
-     "auc_algorithm": 0.584
+     "auc_model": 0.389,
+     "auc_algorithm": 0.311
     },
     {
      "object": "2. Песчаный переулок",
      "positives": 33,
-     "auc_model": 0.701,
-     "auc_algorithm": 0.5
+     "auc_model": 0.555,
+     "auc_algorithm": 0.485
     },
     {
      "object": "20. Макеева С. ул",
      "positives": 144,
-     "auc_model": 0.556,
-     "auc_algorithm": 0.436
+     "auc_model": 0.545,
+     "auc_algorithm": 0.424
     },
     {
      "object": "4. Харьковская улица",
      "positives": 572,
-     "auc_model": 0.647,
-     "auc_algorithm": 0.675
+     "auc_model": 0.743,
+     "auc_algorithm": 0.688
     },
     {
      "object": "5. Багрицкого улица",
      "positives": 22,
-     "auc_model": 0.598,
-     "auc_algorithm": 0.344
+     "auc_model": 0.651,
+     "auc_algorithm": 0.355
     }
    ],
-   "auc_model_mean": 0.634,
-   "auc_algorithm_mean": 0.537
+   "auc_model_mean": 0.608,
+   "auc_algorithm_mean": 0.503
   },
   "shrub": {
-   "rows": 57577,
-   "positives_project": 13751,
+   "rows": 57304,
+   "positives_project": 13363,
    "objects_with_project": [
     "1. Олимпийская деревня",
     "10. Старый Гай ул",
@@ -105,67 +105,67 @@
    "holdout": [
     {
      "object": "1. Олимпийская деревня",
-     "positives": 10429,
-     "auc_model": 0.445,
-     "auc_algorithm": 0.52
+     "positives": 10017,
+     "auc_model": 0.453,
+     "auc_algorithm": 0.522
     },
     {
      "object": "10. Старый Гай ул",
      "positives": 49,
-     "auc_model": 0.583,
-     "auc_algorithm": 0.534
+     "auc_model": 0.636,
+     "auc_algorithm": 0.556
     },
     {
      "object": "12. Наташинский пр-д(Дорога от ул. Борисовские пруды до пр.пр5396(вокруг м-р Братеево))",
      "positives": 537,
-     "auc_model": 0.732,
-     "auc_algorithm": 0.565
+     "auc_model": 0.728,
+     "auc_algorithm": 0.568
     },
     {
      "object": "13. Харьковский проезд",
      "positives": 68,
-     "auc_model": 0.669,
-     "auc_algorithm": 0.659
+     "auc_model": 0.526,
+     "auc_algorithm": 0.385
     },
     {
      "object": "15. Академика Понтрягина",
-     "positives": 304,
-     "auc_model": 0.557,
-     "auc_algorithm": 0.583
+     "positives": 328,
+     "auc_model": 0.577,
+     "auc_algorithm": 0.602
     },
     {
      "object": "16. улица Берзарина",
      "positives": 524,
-     "auc_model": 0.612,
-     "auc_algorithm": 0.565
+     "auc_model": 0.654,
+     "auc_algorithm": 0.561
     },
     {
      "object": "17. Грузинская М ул",
      "positives": 172,
-     "auc_model": 0.543,
-     "auc_algorithm": 0.269
+     "auc_model": 0.53,
+     "auc_algorithm": 0.255
     },
     {
      "object": "2. Песчаный переулок",
      "positives": 1209,
-     "auc_model": 0.659,
-     "auc_algorithm": 0.588
+     "auc_model": 0.685,
+     "auc_algorithm": 0.591
     },
     {
      "object": "20. Макеева С. ул",
      "positives": 309,
-     "auc_model": 0.455,
-     "auc_algorithm": 0.4
+     "auc_model": 0.536,
+     "auc_algorithm": 0.401
     },
     {
      "object": "4. Харьковская улица",
      "positives": 150,
-     "auc_model": 0.595,
-     "auc_algorithm": 0.621
+     "auc_model": 0.58,
+     "auc_algorithm": 0.622
     }
    ],
-   "auc_model_mean": 0.585,
-   "auc_algorithm_mean": 0.53
+   "auc_model_mean": 0.59,
+   "auc_algorithm_mean": 0.506
   }
  }
 }
