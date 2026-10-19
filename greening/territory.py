@@ -10,6 +10,9 @@ from shapely.ops import polygonize, unary_union
 MAX_GAP = 2.0
 # запас вокруг всех объектов, если границы нет совсем, м
 FALLBACK_MARGIN = 5.0
+BOUNDARY_KINDS = ('work_boundary', 'order_boundary')
+# часть территории с такой долей плотности объектов от самой насыщенной части — копия границы без подосновы
+EMPTY_SHARE = 0.02
 
 
 def _lines(geometry):
@@ -50,6 +53,23 @@ def _area(lines, max_gap):
     return area, links
 
 
+def _drop_copies(area, items):
+    """Части территории без подосновы — копии границы для листа или схемы (Харьковская: та же граница
+    в 4,4 км от участка, внутри ни одного объекта): посадки там встали бы на «неизвестную поверхность».
+    Часть отбрасывается, если объектов на 1000 м² в ней меньше EMPTY_SHARE от самой насыщенной."""
+    parts = [p for p in getattr(area, 'geoms', [area]) if p.area > 1.0]
+    if len(parts) < 2:
+        return area, []
+    content = [i.geometry for i in items if i.kind not in BOUNDARY_KINDS and i.etype not in ('TEXT', 'MTEXT')]
+    index = STRtree(content)
+    density = [len(index.query(p, predicate='intersects')) / p.area for p in parts]
+    best = max(density)
+    kept = [p for p, d in zip(parts, density) if d >= best * EMPTY_SHARE]
+    dropped = [{'area_m2': round(p.area, 1), 'objects': round(d * p.area), 'center': [round(p.centroid.x, 1), round(p.centroid.y, 1)]}
+               for p, d in zip(parts, density) if d < best * EMPTY_SHARE]
+    return unary_union(kept), dropped
+
+
 def resolve(items, max_gap=MAX_GAP):
     """(territory, info). Порядок: «Граница работ» → «Граница заказа» → охват всех объектов."""
     for kind, method in (('work_boundary', 'work_boundary'), ('order_boundary', 'order_boundary')):
@@ -58,7 +78,13 @@ def resolve(items, max_gap=MAX_GAP):
             continue
         area, links = _area(lines, max_gap)
         if not area.is_empty and area.area > 1.0:
-            return area, {'method': method, 'gaps_closed': links, 'area_m2': round(area.area, 1)}
+            area, dropped = _drop_copies(area, items)
+            info = {'method': method, 'gaps_closed': links, 'area_m2': round(area.area, 1)}
+            if dropped:
+                info['dropped_parts'] = dropped
+                info['note'] = (f'Отброшено частей границы без подосновы: {len(dropped)} '
+                                '(копия границы для листа или схемы)')
+            return area, info
 
     shapes = [i.geometry for i in items if i.etype not in ('TEXT', 'MTEXT', 'INSERT')]
     if not shapes:

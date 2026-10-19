@@ -193,7 +193,11 @@ def run(plan_path, geobase_path, out_dir, cache_dir=None, progress=None, workers
     _write(out / 'view.json', view)
     _write(out / 'justification.json', view_data.report(view, plan))
 
+    # отброшенные копии границы работ (territory._drop_copies) — чтобы было видно, что взято не всё
+    territory_note = next((f['properties'].get('note') for f in geojson['features']
+                           if f['properties']['layer'] == 'territory'), None)
     summary = {
+        **({'territory_note': territory_note} if territory_note else {}),
         'territory_m2': geojson['metadata']['summary'].get('territory_m2'),
         'green_m2': geojson['metadata']['summary'].get('green_m2'),
         'structures': plan['summary']['structures'],

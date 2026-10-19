@@ -8,9 +8,12 @@
   "ignore": [
     "координатн.*крест", "^рамк[аи]$", "^подписи рамок$", "^дв офр рамка$", "^красные линии$",
     "^горизонтали$", "^defpoints$", "^геодезические пункты$", "^номер дома$", "^0 карта$",
-    "размер", "^разметка$", "^ разметка", "разметка ", "^надписи разметка$", "traffic line"
+    "размер", "^разметка$", "^ разметка", "разметка ", "^надписи разметка$", "traffic line", "красные линии"
   ],
   "rules": [
+    {"pattern": "демонт|(^| )дем( |$|\\.)", "kind": "ignore", "priority": 300, "_comment": "демонтируемое (опоры, ВЛ, сети, растения) после работ не останется — отступов не даёт"},
+    {"pattern": "дендр.*(номер|выноск|подпис|текст)|нумдендр", "kind": "ignore", "priority": 210, "_comment": "номера и выноски дендроплана — оформление"},
+    {"pattern": "освещенност|освещённост", "kind": "ignore", "priority": 210, "_comment": "«ЭН_освещенность» — изолинии расчёта освещённости, не кабель (Наташинский, Харьковский проезд: 275 тыс. линий закрывали места под деревья)"},
     {"pattern": "границ[аы] работ", "kind": "work_boundary", "priority": 200},
     {"pattern": "границ[аы] благоустройства", "kind": "work_boundary", "priority": 190},
     {"pattern": "границ[аы] заказа", "kind": "order_boundary", "priority": 170},
@@ -22,17 +25,17 @@
     {"pattern": "пояснительные подписи", "kind": "label", "priority": 160},
 
     {"pattern": "школ|детск.*сад", "kind": "building_school_kindergarten", "priority": 150},
-    {"pattern": "водосток|дренаж|дождеприемн|водоотводн|(^| )дп( |$)", "kind": "drainage", "priority": 150},
+    {"pattern": "водосток|дренаж|дождеприемн|водоотводн|ливнест|ливнев|(^| )дп( |$)", "kind": "drainage", "priority": 150},
     {"pattern": "лэп|возд.* лини|воздушн.*электр|сип |(^| )вл( |$)", "kind": "overhead_power_line", "priority": 150},
     {"pattern": "колод|люк|(^| )дк( |$)", "kind": "manhole", "priority": 140},
-    {"pattern": "трамвайн.* пут|рельс", "kind": "tram_track", "priority": 130},
+    {"pattern": "трамва|рельс", "kind": "tram_track", "priority": 130},
 
     {"pattern": "кабел.* связ|связи|телеграф|телефон|ккс|мгтс|(^| )сс( |$)", "kind": "comm_cable", "priority": 120},
     {"pattern": "водопровод|(^| )в1( |$)", "kind": "water_supply", "priority": 100},
     {"pattern": "канализац", "kind": "sewer", "priority": 100},
     {"pattern": "газопровод|(^| )газ( |$)", "kind": "gas_pipeline", "priority": 100},
     {"pattern": "тепло", "kind": "heating_network", "priority": 100},
-    {"pattern": "кабел|электр|освещен(?!.*опор)|(^| )кл( |$)|труба ?[0-9]|футляр", "kind": "power_comm_cable", "priority": 100},
+    {"pattern": "кабел|электр|освещен(?!.*опор)|(^| )кл( |$)|труба ?[0-9]|футляр|(^| )(эн|эс|но) труба|(^| )тр\\. ?пэ( |$)", "kind": "power_comm_cable", "priority": 100},
     {"pattern": "коллектор|подземные ком", "kind": "utility_tunnel", "priority": 100},
     {"pattern": "трубопровод|(^| )трубы( |$)", "kind": "pipeline_other", "priority": 90},
 
@@ -45,12 +48,13 @@
     {"pattern": "лестниц|пандус|мост|stairs|ramp", "kind": "stairs_ramp", "priority": 100},
     {"pattern": "маф|урн|скам|контейнер|вело|стел|флаг", "kind": "small_architecture", "priority": 100},
 
-    {"pattern": "бортов|(^| )борт( |$)|бордюр|kerb|curb|^бр \\d|^гп ?\\d|^гп \\d+", "kind": "kerb", "priority": 110},
-    {"pattern": "тротуар", "kind": "sidewalk_path", "priority": 100},
+    {"pattern": "бортов|(^| )борт(ы|а)?( |$)|бордюр|kerb|curb|^бр \\d|^гп ?\\d|^гп \\d+", "kind": "kerb", "priority": 110},
+    {"pattern": "тротуар|(^| )трот( |$)", "kind": "sidewalk_path", "priority": 100},
     {"pattern": "граница улицы", "kind": "street_edge", "priority": 100},
     {"pattern": "дорог|проезд|проезжая|автодорог", "kind": "carriageway_edge", "priority": 100},
+    {"pattern": "^трубы под дорог", "kind": "pipeline_other", "priority": 105},
 
-    {"pattern": "полоса деревьев|дерев|кустарн|озелен|растительност", "kind": "tree", "priority": 100}
+    {"pattern": "полоса деревьев|дерев|кустарн|озелен|растительност|дендр", "kind": "tree", "priority": 100}
   ],
   "_hatch_comment": [
     "Штриховки покрытий генплана вида «_АБ ТР-ГЗН»: слева — покрытие сейчас, справа — по проекту.",
@@ -67,10 +71,12 @@
   "_hatch_layers_comment": "Если имя слоя штриховки не в формате «было-стало», тип покрытия ищется по ключевым словам (сверху вниз).",
   "surface_hatch_layers": [
     {"pattern": "hatch.*(grass|lawn)|газон", "surface": "lawn"},
-    {"pattern": "hatch.*(sidewalk|footpath|pavement)", "surface": "sidewalk"},
+    {"pattern": "hatch.*(sidewalk|footpath|pavement)|тротуар|(^| )трот( |$)", "surface": "sidewalk"},
     {"pattern": "hatch.*(road|carriageway)", "surface": "roadway"},
     {"pattern": "устройство.?площадк", "surface": "playground"}
   ],
+  "_sealed_road_comment": "Асфальт по подписи «А»/«Ц» (sealed) — и проезд, и тротуар. Где покрытие шире этого, м, — проезжая часть (или площадь): тротуары и дорожки уже. Так в топосъёмке без штриховок появляется проезд с отступом 2/1 м (743-ПП, табл. 3.6.1).",
+  "sealed_road_width_m": 6.0,
   "surface_hatch_pattern": "^_?((?:АБ|ПЛ|ЩМА|ГЗН|Щ)(?: (?:ТР|ПЧ))?)-((?:АБ|ПЛ|ЩМА|ГЗН|Щ)(?: (?:ТР|ПЧ))?)",
   "_labels_comment": "Подписи на чертеже → тип поверхности или структуры. Сравнение без регистра, по началу текста после удаления пробелов.",
   "labels": [

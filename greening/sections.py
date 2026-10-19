@@ -23,11 +23,20 @@ PLANTING_TYPES = ('tree', 'shrub')
 # разрешены на любой газонной поверхности, нормы деревьев и кустарников их не ограничивают
 HERBACEOUS = 'herbaceous'
 HERBACEOUS_SURFACES = ('lawn', 'flowerbed', 'ground')
+# поверхность не определена по чертежу (нет штриховки и подписи): посадки не назначаются, место только
+# объясняется (recommend.UNKNOWN_EMPTY). На пилотных улицах это незаштрихованные дорожки вдоль бортов
+# и копии границы без подосновы — деревья вставали на дорожку
+NO_PLANTING_SURFACES = ('unknown',)
 SHAPE_TYPES = ('LINE', 'LWPOLYLINE', 'POLYLINE', 'ARC', 'CIRCLE', 'ELLIPSE', 'SPLINE', 'POINT', 'INSERT', 'HATCH')
 # сторона плитки, м: крупные газоны режутся на плитки, секции потом склеиваются обратно
 TILE = 60.0
 # сегментов на четверть окружности у буферов: точнее не нужно, отступы в метрах
 QUAD_SEGS = 4
+# у запретных полос по нормам — описанный многоугольник: вписанный (хорды внутри круга) у точечных объектов
+# и выпуклых углов меньше нормы на r·(1 − cos(π/4q)) — при q = 4 это 30 см у опоры освещения (4 м);
+# при q = 8 и радиусе r / cos(π/32) у углов ровно норма, вдоль прямых запас ~2 %
+ZONE_QUAD_SEGS = 8
+ZONE_SCALE = 1 / math.cos(math.pi / (4 * ZONE_QUAD_SEGS))
 # общая граница короче этого — касание, а не соседство, м
 SHARED_EDGE = 0.01
 # разрез куска по зоне: допустимое расхождение площадей (доля) и сетка пересчёта, м
@@ -114,7 +123,7 @@ class Sources:
         clipped = [c for c in _clip([shapes[int(n)] for n in found], window) if not c.is_empty]
         if not clipped:
             return Polygon()
-        return unary_union(shapely.buffer(clipped, distance, quad_segs=QUAD_SEGS)).intersection(area)
+        return unary_union(shapely.buffer(clipped, distance * ZONE_SCALE, quad_segs=ZONE_QUAD_SEGS)).intersection(area)
 
 
 def _clip(shapes, window):
@@ -229,8 +238,10 @@ def build(items, surfaces, structures, trees, norms=None, skip=None):
         rule_marks = frozenset(m for m in marks if m.startswith('rule:'))
         banned = frozenset(rule_info[m][0] for m in rule_marks)
         # где сажать нельзя ничего, условия места не нужны — такие куски склеиваются целиком
-        tags = frozenset() if banned >= set(PLANTING_TYPES) else frozenset(m[4:] for m in marks if m.startswith('tag:'))
-        key = (next(m[8:] for m in marks if m.startswith('surface:')), banned, tags)
+        surface = next(m[8:] for m in marks if m.startswith('surface:'))
+        tags = frozenset() if banned >= set(PLANTING_TYPES) or surface in NO_PLANTING_SURFACES \
+            else frozenset(m[4:] for m in marks if m.startswith('tag:'))
+        key = (surface, banned, tags)
         groups[key].extend((piece, rule_marks) for piece in pieces)
 
     sections = []
@@ -239,7 +250,8 @@ def build(items, surfaces, structures, trees, norms=None, skip=None):
             sections.append({
                 'geometry': piece,
                 'surface': surface,
-                'allowed': [t for t in PLANTING_TYPES if t not in banned]
+                'allowed': [] if surface in NO_PLANTING_SURFACES else
+                           [t for t in PLANTING_TYPES if t not in banned]
                            + ([HERBACEOUS] if surface in HERBACEOUS_SURFACES else []),
                 'tags': set(tags),
                 'rule_marks': set(marks),
@@ -373,7 +385,7 @@ def _absorb(sections, minimum):
             if best is None:
                 continue
             host = sections[best]
-            joined = _polygons(unary_union([host['geometry'], geometry]))
+            joined = _polygons(_join(host['geometry'], geometry))
             if not joined:
                 continue
             host['geometry'] = max(joined, key=lambda p: p.area)
@@ -383,6 +395,19 @@ def _absorb(sections, minimum):
         absorbed += merged
         if not merged:
             return sections, absorbed
+
+
+def _join(host, piece):
+    """Объединение соседних секций со сверкой площади: GEOS иногда теряет дыры хозяина (Измайловская:
+    обрезок 0,0 м² к секции с 9 дырами дал 289 м² вместо 162 — дыры, где лежат другие секции, стали общими).
+    Не сошлось — на сетке GRID; не сошлось и там — пустая геометрия, обрезок не приклеивается."""
+    expected = host.area + piece.area
+    # на сетке край сдвигается до GRID/2 — допуск по периметру
+    for grid, tolerance in ((None, CUT_TOLERANCE * max(expected, 1.0)), (GRID, (host.length + piece.length) * GRID)):
+        joined = shapely.union(host, piece, grid_size=grid)
+        if abs(joined.area - expected) <= tolerance:
+            return joined
+    return Polygon()
 
 
 def _drop_noise(sections):

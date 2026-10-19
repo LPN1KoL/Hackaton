@@ -24,6 +24,7 @@ class Classifier:
         self.rules = [(re.compile(r['pattern']), r['kind'], r['priority']) for r in data['rules']]
         self.surface_codes = data['surface_codes']
         self.surface_hatch = re.compile(data['surface_hatch_pattern'])
+        self.sealed_road_width = data.get('sealed_road_width_m')
         self.surface_layers = [(re.compile(r['pattern']), r['surface']) for r in data.get('surface_hatch_layers', [])]
         self.labels = [(re.compile(r['pattern']), r.get('structure'), r.get('surface')) for r in data['labels']]
         self.kind = lru_cache(maxsize=None)(self._kind)

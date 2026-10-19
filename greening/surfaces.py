@@ -23,6 +23,8 @@ LABEL_KINDS = (None, 'label', 'site_outline', 'lawn_edge', 'vegetation_edge', 's
 # грань без подписи — здание, если такая доля её контура идёт по линиям зданий
 BUILDING_EDGE_SHARE = 0.6
 WALL_SNAP = 0.2
+# сетка пересчёта, когда GEOS не справился с исходной геометрией, м
+GRID = 0.001
 # грани меньше этой площади — щели между линиями, м²
 MIN_FACE = 0.5
 
@@ -174,4 +176,39 @@ def build(items, territory, classifier):
         if not shape.is_empty:
             result[surface] = shape
             taken = taken.union(shape)
+    if classifier.sealed_road_width and 'sealed' in result:
+        _wide_sealed_as_roadway(result, classifier.sealed_road_width, sources)
+        result = {s: result[s] for s in PRIORITY if s in result}
     return result, dict(sources)
+
+
+def _wide_sealed_as_roadway(result, width, sources):
+    """Асфальт шире width (морфологическое открытие) — проезжая часть: в топосъёмке проезд и тротуар
+    подписаны одинаково «А», а без этого у края проезда действовал бы отступ тротуара 0,7/0,5 м вместо 2/1 м
+    и структуры не резались бы по улицам."""
+    sealed = result['sealed']
+    try:
+        wide, rest = _opening(sealed, width)
+    except shapely.errors.GEOSException:
+        # GEOS бывает неустойчив на почти совпадающих рёбрах (Лодочная) — тогда всё на сетке 1 мм
+        sealed = shapely.set_precision(shapely.make_valid(sealed), GRID)
+        wide, rest = _opening(sealed, width, GRID)
+    if wide.is_empty:
+        return
+    result['roadway'] = unary_union([result['roadway'], wide]) if 'roadway' in result else wide
+    if rest.is_empty:
+        del result['sealed']
+    else:
+        result['sealed'] = rest
+    sources['wide_sealed_roadway'] = len(_polygons(wide))
+
+
+def _opening(sealed, width, grid=None):
+    """(широкая часть, остальное): морфологическое открытие на width, куски меньше width² — шум."""
+    opened = sealed.buffer(-width / 2, join_style='mitre').buffer(width / 2, join_style='mitre')
+    wide = shapely.intersection(opened, sealed, grid_size=grid)
+    wide = unary_union([p for p in _polygons(wide) if p.area >= width * width])
+    if wide.is_empty:
+        return wide, sealed
+    rest = unary_union(_polygons(shapely.difference(sealed, wide, grid_size=grid)))
+    return wide, rest
