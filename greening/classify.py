@@ -26,6 +26,7 @@ class Classifier:
         self.surface_hatch = re.compile(data['surface_hatch_pattern'])
         self.sealed_road_width = data.get('sealed_road_width_m')
         self.surface_layers = [(re.compile(r['pattern']), r['surface']) for r in data.get('surface_hatch_layers', [])]
+        self.outline_layers = [(re.compile(r['pattern']), r['surface']) for r in data.get('surface_outline_layers', [])]
         self.labels = [(re.compile(r['pattern']), r.get('structure'), r.get('surface')) for r in data['labels']]
         self.kind = lru_cache(maxsize=None)(self._kind)
         self.hatch_surface = lru_cache(maxsize=None)(self._hatch_surface)
@@ -51,6 +52,11 @@ class Classifier:
             return self.surface_codes.get(match.group(2))
         name = normalize(name)
         return next((surface for regex, surface in self.surface_layers if regex.search(name)), None)
+
+    def outline_surface(self, layer):
+        """Поверхность, которую задаёт замкнутый контур на слое (газон ОГХ «LAWN» → 'lawn'); иначе None."""
+        name = normalize(base_name(layer))
+        return next((surface for regex, surface in self.outline_layers if regex.search(name)), None)
 
     def label(self, text):
         """Подпись → (structure, surface) или None."""

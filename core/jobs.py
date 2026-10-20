@@ -80,10 +80,13 @@ def status(job_id):
     path = folder(job_id)
     if path is None:
         return None
-    try:
-        return json.loads((path / 'status.json').read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return None
+    # на Windows в миг замены (_write_status) файл не открывается или кратко отсутствует — повтор
+    for _ in range(20):
+        try:
+            return json.loads((path / 'status.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            time.sleep(0.01)
+    return None
 
 
 def _save(path, **fields):
@@ -94,7 +97,22 @@ def _save(path, **fields):
         except (OSError, ValueError):
             pass
         current.update(fields, updated=time.time())
-        (path / 'status.json').write_text(json.dumps(current, ensure_ascii=False), encoding='utf-8')
+        _write_status(path, current)
+
+
+def _write_status(path, data):
+    """status.json — через временный файл: опрос статуса не застаёт его наполовину записанным (тогда был 404
+    «задача не найдена» посреди счёта — Олимпийская, 20.10)."""
+    temp = path / 'status.json.tmp'
+    temp.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+    for _ in range(40):
+        try:
+            os.replace(temp, path / 'status.json')
+            return
+        except PermissionError:
+            # Windows не заменяет файл, пока его читает опрос статуса, — это доли миллисекунды
+            time.sleep(0.025)
+    os.replace(temp, path / 'status.json')
 
 
 def _launch(path, work):
@@ -108,7 +126,7 @@ def _settings():
                 limit=settings.GREENING_LLM_LIMIT, use_llm=settings.GREENING_LLM, placement=settings.GREENING_PLACEMENT)
 
 
-def start(files, preferences=None, placement='model'):
+def start(files, preferences=None, placement='algorithm'):
     """files: {'file': (имя, байты), 'geobase': (имя, байты)?}; preferences — пожелания к подбору растений;
     placement — режим рассадки со стартовой страницы (algorithm | model), версии наследуют его в params.
     Возвращает номер задачи."""

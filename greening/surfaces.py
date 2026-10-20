@@ -151,6 +151,14 @@ def build(items, territory, classifier):
 
     for item in items:
         if item.etype != 'HATCH':
+            # контур, который сам задаёт поверхность (газоны ОГХ без штриховок)
+            surface = classifier.outline_surface(item.layer)
+            geometry = item.geometry
+            if surface and geometry.geom_type == 'LineString' and geometry.is_closed and len(geometry.coords) >= 4:
+                polygon = shapely.make_valid(Polygon(geometry.coords))
+                if polygon.area > MIN_FACE:
+                    layers[surface].append(polygon)
+                    sources['outline'] += 1
             continue
         surface = item.surface
         if not surface and item.kind == 'lawn_edge':

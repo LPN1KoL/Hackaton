@@ -8,10 +8,11 @@ import unittest
 from unittest import mock
 from collections import Counter
 
-from shapely.geometry import box
+from shapely.geometry import LineString, box
 
-from greening import sections, surfaces
+from greening import pipeline, sections, surfaces
 from greening.classify import Classifier
+from greening.reader import Item
 
 
 class WideSealed(unittest.TestCase):
@@ -27,6 +28,56 @@ class WideSealed(unittest.TestCase):
         surfaces._wide_sealed_as_roadway(result, 6.0, Counter())
         self.assertNotIn('roadway', result)
         self.assertAlmostEqual(result['sealed'].area, 300)
+
+
+class OghExport(unittest.TestCase):
+    """Выгрузка паспорта ОГХ (236285, 236287 — файлы проверки организаторов, 20.10): граница — BOUND,
+    газоны — замкнутые контуры LAWN без штриховок и подписей."""
+
+    def test_layer_classes(self):
+        c = Classifier()
+        self.assertEqual(c.kind('BOUND'), 'work_boundary')
+        self.assertEqual(c.kind('ogh_BOUND'), 'ignore')
+        self.assertEqual(c.kind('PLANT_NUM_TXT'), 'ignore')
+        self.assertEqual(c.kind('TREE'), 'tree')
+        self.assertEqual(c.kind('08TREE'), 'tree')
+        self.assertEqual(c.kind('DOM'), 'building_wall')
+        self.assertEqual(c.kind('Столб ограждения'), 'fence')
+        self.assertEqual(c.hatch_surface('2.Асфальт'), 'sealed')
+
+    def test_lawn_outline_is_lawn(self):
+        territory = box(0, 0, 50, 50)
+        lawn = Item('lawn_edge', 'LAWN', 'LWPOLYLINE', LineString(box(10, 10, 30, 30).exterior.coords), 'plan')
+        result, sources = surfaces.build([lawn], territory, Classifier())
+        self.assertAlmostEqual(result['lawn'].area, 400, delta=0.1)
+        self.assertEqual(sources['outline'], 1)
+
+    def test_open_line_is_only_an_edge(self):
+        territory = box(0, 0, 50, 50)
+        line = Item('lawn_edge', 'LAWN', 'LWPOLYLINE', LineString([(10, 10), (30, 10), (30, 30)]), 'plan')
+        result, _ = surfaces.build([line], territory, Classifier())
+        self.assertNotIn('lawn', result)
+
+
+class Demolition(unittest.TestCase):
+    """СПОЗУ (2026-07-21 - СПОЗУ, 20.10): дом под снос в подоснове ещё стоит — его стены и крыльца не учитываются,
+    стена нового дома, пересекающая контур сноса, остаётся."""
+
+    def test_layer_classes(self):
+        c = Classifier()
+        self.assertEqual(c.kind('_ГП_Сносимые здания'), 'demolition_area')
+        self.assertEqual(c.kind('_ГП_Экспликация сущ зданий для 2000'), 'ignore')
+        self.assertEqual(c.kind('_ГП_Граница ГПЗУ'), 'order_boundary')
+
+    def test_drop_demolished(self):
+        outline = Item('demolition_area', 'Сносимые здания', 'LWPOLYLINE', LineString(box(0, 0, 10, 40).exterior.coords), 'plan')
+        old_wall = Item('building_wall', 'Части зданий', 'LINE', LineString([(0, 5), (10, 5)]), 'base')
+        porch = Item('building_wall', 'Крыльца', 'LINE', LineString([(10, 10), (12, 10)]), 'base')
+        new_wall = Item('building_wall', 'Здание', 'LWPOLYLINE', LineString([(5, 20), (30, 20)]), 'plan')
+        cable = Item('power_comm_cable', 'Кабель', 'LINE', LineString([(1, 1), (9, 1)]), 'base')
+        kept, removed = pipeline._drop_demolished([outline, old_wall, porch, new_wall, cable])
+        self.assertEqual(removed, 2)
+        self.assertEqual([i.layer for i in kept], ['Сносимые здания', 'Здание', 'Кабель'])
 
 
 class Sections(unittest.TestCase):

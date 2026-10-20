@@ -790,4 +790,21 @@
         if (event.target === helpDialog) helpDialog.close();
     });
     helpDialog.addEventListener('close', function () { helpVideo.pause(); });
+
+    // ссылка на готовый результат: /?job=<номер> открывает сразу экран результата (примеры для сдачи и демо)
+    const linked = new URLSearchParams(window.location.search).get('job');
+    if (linked) {
+        (async function () {
+            try {
+                const response = await fetch(jobUrl(linked, ''));
+                if (!response.ok) throw new Error('Задача ' + linked + ' не найдена.');
+                const state = await response.json();
+                await follow({ job: linked, name: state.name, size: state.size });
+            } catch (err) {
+                goTo('upload');
+                submitError = err.message;
+                refresh();
+            }
+        }());
+    }
 }());

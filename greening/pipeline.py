@@ -12,6 +12,10 @@ from .classify import Classifier
 
 # объекты дальше этого от территории не нужны: самый большой отступ — 10 м от школ
 MARGIN = 15.0
+# стены подосновы внутри контура сносимого здания с таким запасом — снесённый дом, м
+DEMOLITION_SNAP = 1.0
+# короткие линии здания, задевающие этот контур, — крыльца снесённого дома (стены нового дома длиннее), м
+DEMOLITION_PART_M = 5.0
 
 
 @dataclass
@@ -47,6 +51,35 @@ def _layer_report(items, area):
     return {'by_kind': dict(kinds.most_common()), 'unknown_layers': dict(unknown.most_common(40))}
 
 
+def _drop_demolished(items):
+    """(объекты без зданий под снос, сколько убрано). В подоснове снесённый дом ещё стоит: без этого он
+    остаётся зданием с отступом 5 м, а проектировщик сажает на его месте (2026-07-21 - СПОЗУ: два дома,
+    24 посадки проекта)."""
+    shapes = []
+    for item in items:
+        if item.kind != 'demolition_area':
+            continue
+        geometry = item.geometry
+        if geometry.geom_type == 'LineString' and geometry.is_closed and len(geometry.coords) >= 4:
+            geometry = shapely.make_valid(shapely.Polygon(geometry.coords))
+        if geometry.geom_type in ('Polygon', 'MultiPolygon') and geometry.area > 1.0:
+            shapes.append(geometry)
+    if not shapes:
+        return items, 0
+    area = shapely.union_all(shapes).buffer(DEMOLITION_SNAP)
+    shapely.prepare(area)
+
+    def demolished(item):
+        if item.kind not in surfaces.BUILDING_KINDS:
+            return False
+        geometry = item.geometry
+        return area.contains(geometry) or (geometry.geom_type == 'LineString' and geometry.length <= DEMOLITION_PART_M
+                                            and area.intersects(geometry))
+
+    kept = [i for i in items if not demolished(i)]
+    return kept, len(items) - len(kept)
+
+
 def parse(plan, geobase=None, log=None):
     """Разбирает генплан (и геоподоснову, если есть) и возвращает Result."""
     log = log or (lambda message: None)
@@ -75,6 +108,9 @@ def parse(plan, geobase=None, log=None):
     scene_config = scene.load_config()
     around = [items[int(n)] for n in index.query(area.buffer(scene_config['context_m']))]
     del items, index
+    local, demolished = _drop_demolished(local)
+    if demolished:
+        info['demolished_removed'] = demolished
     lap('территория')
 
     surface_map, surface_sources = surfaces.build(local, area, classifier)

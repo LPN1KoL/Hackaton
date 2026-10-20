@@ -177,7 +177,7 @@ Swagger — `/docs/`. Как пользоваться:
 - `greening/config/placement.json` — правила рассадки (параметры модуля, не нормы);
 - `config/settings.py` и переменные окружения:
   - `GREENING_LLM=0` — без LLM;
-  - `GREENING_PLACEMENT` — режим рассадки по умолчанию для веба и параметров редактирования (`model`); в вебе режим выбирается на стартовой странице («Модель» / «Алгоритм», по умолчанию модель) и передаётся в `/upload/` полем `placement`, CLI по умолчанию — `algorithm` (`--placement model`);
+  - `GREENING_PLACEMENT` — режим рассадки по умолчанию для веба и параметров редактирования (`algorithm`); в вебе режим выбирается на стартовой странице («Модель» / «Алгоритм», по умолчанию алгоритм) и передаётся в `/upload/` полем `placement`, CLI по умолчанию — `algorithm` (`--placement model`);
   - `GREENING_LLM_WORKERS` — сколько запросов к LLM идёт параллельно (по умолчанию 5);
   - `GREENING_JOB_ABANDON_S` — через сколько секунд без опроса статуса задача считается брошенной (180);
   - `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_DEBUG` — настройки Django;

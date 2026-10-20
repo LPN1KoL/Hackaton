@@ -12,11 +12,22 @@
   ],
   "rules": [
     {"pattern": "демонт|(^| )дем( |$|\\.)", "kind": "ignore", "priority": 300, "_comment": "демонтируемое (опоры, ВЛ, сети, растения) после работ не останется — отступов не даёт"},
+    {"pattern": "сносим|под снос|(^| )снос( |$)", "kind": "demolition_area", "priority": 300, "_comment": "контур сносимого здания (2026-07-21 - СПОЗУ: «_ГП_Сносимые здания»): стены и контуры зданий подосновы внутри не учитываются (pipeline._drop_demolished)"},
     {"pattern": "дендр.*(номер|выноск|подпис|текст)|нумдендр", "kind": "ignore", "priority": 210, "_comment": "номера и выноски дендроплана — оформление"},
     {"pattern": "освещенност|освещённост", "kind": "ignore", "priority": 210, "_comment": "«ЭН_освещенность» — изолинии расчёта освещённости, не кабель (Наташинский, Харьковский проезд: 275 тыс. линий закрывали места под деревья)"},
+    {"pattern": "^ogh bound$|num txt$|^инвентарные номера$|^спрятать$|^скан$", "kind": "ignore", "priority": 210, "_comment": "выгрузка паспорта ОГХ (236285, 236287): ogh_BOUND — часть участка внутри BOUND (как граница работ дала бы дыру), номера растений и газонов, скрытое, растр"},
+    {"pattern": "экспликац.*(здан|сооруж)|здани[ея]? оси", "kind": "ignore", "priority": 210, "_comment": "экспликация зданий (кружки с номерами) и оси здания — оформление; по «здан» давали стены 5 м (2026-07-21 - СПОЗУ: 38 из 86 «нарушений» посадок проектировщика)"},
     {"pattern": "границ[аы] работ", "kind": "work_boundary", "priority": 200},
+    {"pattern": "^bound$", "kind": "work_boundary", "priority": 200, "_comment": "граница участка в выгрузке паспорта ОГХ"},
+    {"pattern": "^lawn$", "kind": "lawn_edge", "priority": 160, "_comment": "газоны ОГХ — замкнутые контуры, см. surface_outline_layers"},
+    {"pattern": "^flower$", "kind": "flowerbed", "priority": 160},
+    {"pattern": "^(tree|bush|\\d+ ?tree)$", "kind": "tree", "priority": 160, "_comment": "существующие деревья и кусты ОГХ (блоки «Марка Дерево», «Марка Куст»; 08TREE — знаки топосъёмки)"},
+    {"pattern": "^dom$|^жилое$", "kind": "building_wall", "priority": 160},
+    {"pattern": "^zabor$|столб ограждения", "kind": "fence", "priority": 160, "_comment": "столб ограждения — не опора освещения (4 м)"},
+    {"pattern": "^doroga$", "kind": "kerb", "priority": 160, "_comment": "края проездов и дорожек ОГХ; покрытие — по подписям «А» и штриховкам"},
     {"pattern": "границ[аы] благоустройства", "kind": "work_boundary", "priority": 190},
     {"pattern": "границ[аы] заказа", "kind": "order_boundary", "priority": 170},
+    {"pattern": "(^| )границ[аы] гпзу$", "kind": "order_boundary", "priority": 170, "_comment": "участок по ГПЗУ в СПОЗУ (2026-07-21 - СПОЗУ, 20.10) — берётся, только если нет «Границы работ»"},
 
     {"pattern": "границ[аы] площадки", "kind": "site_outline", "priority": 160},
     {"pattern": "лес[аы] и газоны|^газон$|\\(газон\\)|восстановление газона|устройство газона", "kind": "lawn_edge", "priority": 160},
@@ -73,7 +84,17 @@
     {"pattern": "hatch.*(grass|lawn)|газон", "surface": "lawn"},
     {"pattern": "hatch.*(sidewalk|footpath|pavement)|тротуар|(^| )трот( |$)", "surface": "sidewalk"},
     {"pattern": "hatch.*(road|carriageway)", "surface": "roadway"},
-    {"pattern": "устройство.?площадк", "surface": "playground"}
+    {"pattern": "устройство.?площадк", "surface": "playground"},
+    {"pattern": "^lawn$", "surface": "lawn"},
+    {"pattern": "^2\\.асфальт", "surface": "sealed"},
+    {"pattern": "^2\\.плитка", "surface": "paving"},
+    {"pattern": "^2\\.резинов|^2\\.песчанн", "surface": "playground"},
+    {"pattern": "^2\\.песчано гравийн|^2\\.щебен", "surface": "gravel"}
+  ],
+  "_outline_layers_comment": "Слои, где замкнутый контур (полилиния) сам задаёт поверхность, а не только делит территорию: газоны и цветники выгрузки паспорта ОГХ нарисованы контурами без штриховок и подписей.",
+  "surface_outline_layers": [
+    {"pattern": "^lawn$", "surface": "lawn"},
+    {"pattern": "^flower$", "surface": "flowerbed"}
   ],
   "_sealed_road_comment": "Асфальт по подписи «А»/«Ц» (sealed) — и проезд, и тротуар. Где покрытие шире этого, м, — проезжая часть (или площадь): тротуары и дорожки уже. Так в топосъёмке без штриховок появляется проезд с отступом 2/1 м (743-ПП, табл. 3.6.1).",
   "sealed_road_width_m": 6.0,
